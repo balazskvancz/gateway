@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/balazskvancz/gateway/internal/gcontext"
-	"github.com/balazskvancz/gateway/internal/mock"
-	"github.com/balazskvancz/gateway/internal/registry"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
+	"github.com/balazskvancz/gateway/pkg/mock"
+	"github.com/balazskvancz/gateway/pkg/registry"
 )
 
 const (

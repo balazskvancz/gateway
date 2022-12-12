@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 
-	"github.com/balazskvancz/gateway/internal/service"
+	"github.com/balazskvancz/gateway/pkg/service"
 )
 
 const (

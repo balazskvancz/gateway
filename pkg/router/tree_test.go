@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/balazskvancz/gateway/internal/gcontext"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
 var emptyChain = createNewMWChain(func(g *gcontext.GContext) {})

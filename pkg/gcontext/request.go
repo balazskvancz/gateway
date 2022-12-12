@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/balazskvancz/gateway/internal/utils"
+	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
 // Returns the attached request.

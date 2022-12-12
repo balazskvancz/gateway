@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/balazskvancz/gateway/internal/service"
-	"github.com/balazskvancz/gateway/internal/utils"
+	"github.com/balazskvancz/gateway/pkg/service"
+	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
 var (

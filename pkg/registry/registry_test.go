@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/balazskvancz/gateway/internal/service"
+	"github.com/balazskvancz/gateway/pkg/service"
 )
 
 var mockServices = []service.Service{

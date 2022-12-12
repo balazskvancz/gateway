@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/balazskvancz/gateway/internal/gcontext"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
 func TestMiddleware(t *testing.T) {

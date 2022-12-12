@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/balazskvancz/gateway/internal/gcontext"
-	"github.com/balazskvancz/gateway/internal/utils"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
+	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
 type Validator struct {

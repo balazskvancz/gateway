@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/balazskvancz/gateway/internal/gcontext"
-	"github.com/balazskvancz/gateway/internal/utils"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
+	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
 func TestNew(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/balazskvancz/gateway/internal/utils"
+	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
 var (

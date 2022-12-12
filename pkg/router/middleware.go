@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/balazskvancz/gateway/internal/gcontext"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
 type middlewareChain struct {

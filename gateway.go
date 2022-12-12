@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/balazskvancz/gateway/internal/config"
-	"github.com/balazskvancz/gateway/internal/mock"
-	"github.com/balazskvancz/gateway/internal/registry"
-	"github.com/balazskvancz/gateway/internal/router"
-	"github.com/balazskvancz/gateway/internal/service"
+	"github.com/balazskvancz/gateway/pkg/config"
+	"github.com/balazskvancz/gateway/pkg/mock"
+	"github.com/balazskvancz/gateway/pkg/registry"
+	"github.com/balazskvancz/gateway/pkg/router"
+	"github.com/balazskvancz/gateway/pkg/service"
 )
 
 type Gateway struct {

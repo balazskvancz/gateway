@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/balazskvancz/gateway/internal/communicator"
-	"github.com/balazskvancz/gateway/internal/gcontext"
+	"github.com/balazskvancz/gateway/pkg/communicator"
+	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
 const (
