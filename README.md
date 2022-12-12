@@ -4,6 +4,9 @@ Lightweight API Gateway written in Go.
 
 ## Example
 
+
+### Creating a new instace.
+
 ```go
 func main() {
 	gw, err := gateway.New()
@@ -17,3 +20,4 @@ func main() {
 	gw.Start()
 }
 ```
+

@@ -25,8 +25,6 @@ const (
 	StateAvailable
 )
 
-const sleepMin = 1
-
 type serviceEntity struct {
 	service *service.Service
 
@@ -35,12 +33,13 @@ type serviceEntity struct {
 
 type Registry struct {
 	services map[string]*serviceEntity
+	sleepMin uint8
 
 	servicePrefixL int8
 }
 
 // Creates a new registry with empty slice of services.
-func NewRegistry(services *[]service.Service) (*Registry, error) {
+func NewRegistry(services *[]service.Service, sleepMin uint8) (*Registry, error) {
 	if services == nil {
 		return nil, errServiceMapNil
 	}
@@ -88,7 +87,8 @@ func NewRegistry(services *[]service.Service) (*Registry, error) {
 
 	return &Registry{
 		services:       servicesMap,
-		servicePrefixL: length, // Quite a catchy one.
+		servicePrefixL: length,
+		sleepMin:       sleepMin,
 	}, nil
 }
 
@@ -193,7 +193,8 @@ func (r *Registry) UpdateStatus() {
 			r.setState(s.GetService().Prefix, StateAvailable)
 		}
 
-		time.Sleep(sleepMin * time.Minute)
+		sleepTime := time.Duration(r.sleepMin) * time.Minute
+		time.Sleep(sleepTime)
 	}
 }
 

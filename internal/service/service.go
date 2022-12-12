@@ -2,20 +2,16 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/balazskvancz/gateway/internal/communicator"
-	"github.com/balazskvancz/gateway/internal/config"
 	"github.com/balazskvancz/gateway/internal/gcontext"
 )
 
 const (
-	servicesJsonPath = "services.json"
-
 	statusPath = "/api/status/health-check"
 	timeOutSec = 10
 )
@@ -41,24 +37,24 @@ type Service struct {
 	IsAvailable bool
 }
 
-type services struct {
-	Services []Service `json:"services"`
-}
+type services = *[]Service
 
-func validateServices(servics *services) error {
-	if servics == nil {
+// Validates the given services. Returns error if
+// something is not correct.
+func ValidateServices(srvcs services) error {
+	if srvcs == nil {
 		return errServicesIsNil
 	}
 
-	if len(servics.Services) == 0 {
+	if len(*srvcs) == 0 {
 		return errServicesSliceIsEmpty
 	}
 
 	// Rule.
 	// Every services prefix must be the same length!
-	pfLenght, isOk := len(servics.Services[0].Prefix), true
+	pfLenght, isOk := len((*srvcs)[0].Prefix), true
 
-	for _, service := range servics.Services {
+	for _, service := range *srvcs {
 		if len(service.Prefix) != pfLenght {
 			isOk = false
 		}
@@ -69,29 +65,6 @@ func validateServices(servics *services) error {
 	}
 
 	return nil
-}
-
-// Loading services from json file.
-// Validates if every service has the same
-// length for given prefix.
-func LoadServices() (*[]Service, error) {
-	b, err := config.LoadConfigFile(servicesJsonPath)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var services services
-
-	if err := json.Unmarshal(b, &services); err != nil {
-		return nil, err
-	}
-
-	if err := validateServices(&services); err != nil {
-		return nil, err
-	}
-
-	return &services.Services, nil
 }
 
 // A handler for each service.

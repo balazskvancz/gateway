@@ -20,7 +20,7 @@ var mockServices = []service.Service{
 
 const testPrefixLength = 2
 
-var mockRegisty, _ = NewRegistry(&mockServices)
+var mockRegisty, _ = NewRegistry(&mockServices, 1)
 
 func TestNewRegistry(t *testing.T) {
 	tt := []struct {
@@ -48,11 +48,11 @@ func TestNewRegistry(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			registry, gotErr := NewRegistry(tc.services)
+			registry, gotErr := NewRegistry(tc.services, 1)
 
 			if tc.expectedError == nil {
 				if registry == nil {
-					t.Errorf("expected not nil registry, but got one")
+					t.Fatalf("expected not nil registry, but got one")
 				}
 
 				if gotErr != nil {
@@ -96,7 +96,7 @@ func TestServiceByName(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			registry, err := NewRegistry(&mockServices)
+			registry, err := NewRegistry(&mockServices, 1)
 
 			if err != nil {
 				t.Fatalf("got create error: %v\n", err)

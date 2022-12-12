@@ -32,13 +32,13 @@ func New() (*Gateway, error) {
 		return nil, err
 	}
 
-	services, err := service.LoadServices()
+	err = service.ValidateServices(cfg.Services)
 
 	if err != nil {
 		return nil, err
 	}
 
-	registry, err := registry.NewRegistry(services)
+	registry, err := registry.NewRegistry(cfg.Services, cfg.SleepMin)
 
 	if err != nil {
 		return nil, err

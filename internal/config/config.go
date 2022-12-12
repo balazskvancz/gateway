@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/json"
+
+	"github.com/balazskvancz/gateway/internal/service"
 )
 
 const (
@@ -9,8 +11,11 @@ const (
 )
 
 type Config struct {
-	Address int  `json:"address"`
-	IsProd  bool `json:"isProd"`
+	Address  int   `json:"address"`
+	IsProd   bool  `json:"isProd"`
+	SleepMin uint8 `json:"sleepMin"`
+
+	Services *[]service.Service `json:"services"`
 }
 
 // Reads the main config for the Gateway itself.

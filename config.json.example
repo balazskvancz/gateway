@@ -1,4 +1,15 @@
 {
   "address": 8000,
   "isProd": false,
+  "sleepMin": 5,
+  "services": [
+    {
+      "protocol": "http",
+      "name": "foo-name",
+      "host": "localhost",
+      "port": "8000",
+      "prefix": "/api/foo",
+      "ctype": "json"
+    }
+  ]
 }
