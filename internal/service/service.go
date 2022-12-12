@@ -1,0 +1,183 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/balazskvancz/gateway/internal/communicator"
+	"github.com/balazskvancz/gateway/internal/config"
+	"github.com/balazskvancz/gateway/internal/gcontext"
+)
+
+const (
+	servicesJsonPath = "services.json"
+
+	statusPath = "/api/status/health-check"
+	timeOutSec = 10
+)
+
+var (
+	errServicesIsNil        = errors.New("services is nil")
+	errservicesPrefixLength = errors.New("service prefix must be same length")
+	errServicesSliceIsEmpty = errors.New("services slice is empty")
+
+	ErrServiceNotAvailable = errors.New("service not available")
+)
+
+type Service struct {
+	Protocol     string `json:"protocol"`
+	Name         string `json:"name"`
+	Host         string `json:"host"`
+	Port         string `json:"port"`
+	Prefix       string `json:"prefix"`
+	CContentType string `json:"ctype"` // Content-type of communication.
+
+	client *communicator.HttpClient
+
+	IsAvailable bool
+}
+
+type services struct {
+	Services []Service `json:"services"`
+}
+
+func validateServices(servics *services) error {
+	if servics == nil {
+		return errServicesIsNil
+	}
+
+	if len(servics.Services) == 0 {
+		return errServicesSliceIsEmpty
+	}
+
+	// Rule.
+	// Every services prefix must be the same length!
+	pfLenght, isOk := len(servics.Services[0].Prefix), true
+
+	for _, service := range servics.Services {
+		if len(service.Prefix) != pfLenght {
+			isOk = false
+		}
+	}
+
+	if !isOk {
+		return errservicesPrefixLength
+	}
+
+	return nil
+}
+
+// Loading services from json file.
+// Validates if every service has the same
+// length for given prefix.
+func LoadServices() (*[]Service, error) {
+	b, err := config.LoadConfigFile(servicesJsonPath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var services services
+
+	if err := json.Unmarshal(b, &services); err != nil {
+		return nil, err
+	}
+
+	if err := validateServices(&services); err != nil {
+		return nil, err
+	}
+
+	return &services.Services, nil
+}
+
+// A handler for each service.
+func (s *Service) Handle(ctx *gcontext.GContext) {
+	if !s.IsAvailable {
+		ctx.SendUnavailable()
+
+		return
+	}
+
+	// Forwarding the data to the the service.
+	b, code, header := s.client.Forwarder(ctx.GetRequest())
+
+	ctx.SendRaw(b, code, header)
+}
+
+// Sending @GET request to the service.
+func (s *Service) Get(url string, header ...http.Header) (*http.Response, error) {
+	if !s.IsAvailable {
+		return nil, ErrServiceNotAvailable
+	}
+
+	// If there is any given
+	if len(header) > 0 {
+		s.client.SetHeader(header[0])
+	}
+
+	ch := s.client.PoolGet()
+	defer s.client.PoolPut(ch)
+
+	res, err := s.client.Get(url)
+
+	return res, err
+}
+
+// Sending @POST request to the service.
+func (s *Service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
+	if !s.IsAvailable {
+		return nil, ErrServiceNotAvailable
+	}
+
+	if len(header) > 0 {
+		s.client.SetHeader(header[0])
+	}
+
+	ch := s.client.PoolGet()
+	defer s.client.PoolPut(ch)
+
+	res, err := s.client.Post(url, data)
+
+	return res, err
+}
+
+// Checks the status of the service.
+func (s *Service) CheckStatus() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeOutSec*time.Second)
+	defer cancel()
+
+	url := s.GetAddress() + statusPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+
+	if err != nil {
+		s.IsAvailable = false
+		return false, err
+	}
+
+	res, err := s.client.Do(req)
+
+	if err != nil {
+		s.IsAvailable = false
+		return false, err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		s.IsAvailable = false
+		return false, ErrServiceNotAvailable
+	}
+
+	s.IsAvailable = true
+	return true, nil
+}
+
+func (s *Service) GetAddress() string {
+	return fmt.Sprintf("%s://%s:%s", s.Protocol, s.Host, s.Port)
+}
+
+func (s *Service) CreateClient() {
+	s.client = communicator.New(s.GetAddress(), timeOutSec)
+}
