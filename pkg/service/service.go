@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/balazskvancz/gateway/pkg/communicator"
@@ -14,12 +15,15 @@ import (
 const (
 	statusPath = "/api/status/health-check"
 	timeOutSec = 10
+
+	timeOutDur = timeOutSec * time.Second
 )
 
 var (
-	errServicesIsNil        = errors.New("services is nil")
-	errservicesPrefixLength = errors.New("service prefix must be same length")
-	errServicesSliceIsEmpty = errors.New("services slice is empty")
+	errServicesIsNil            = errors.New("services is nil")
+	errServicesPrefixLength     = errors.New("service prefix must be greater than zero")
+	errServicesSamePrefixLength = errors.New("service prefix must be same length")
+	errServicesSliceIsEmpty     = errors.New("services slice is empty")
 
 	ErrServiceNotAvailable = errors.New("service not available")
 )
@@ -51,17 +55,28 @@ func ValidateServices(srvcs services) error {
 	}
 
 	// Rule.
-	// Every services prefix must be the same length!
-	pfLenght, isOk := len((*srvcs)[0].Prefix), true
+	// Every services prefix must be have length and the parts must be equal.
+	prefixLength := len(strings.Split((*srvcs)[0].Prefix, "/"))
 
+	isZeroLengthOk, isSamePrefixOk := true, true
+
+	//
 	for _, service := range *srvcs {
-		if len(service.Prefix) != pfLenght {
-			isOk = false
+		if len(service.Prefix) == 0 {
+			isZeroLengthOk = false
+		}
+
+		if len(strings.Split(service.Prefix, "/")) != prefixLength {
+			isSamePrefixOk = false
 		}
 	}
 
-	if !isOk {
-		return errservicesPrefixLength
+	if !isZeroLengthOk {
+		return errServicesPrefixLength
+	}
+
+	if !isSamePrefixOk {
+		return errServicesSamePrefixLength
 	}
 
 	return nil
@@ -120,7 +135,7 @@ func (s *Service) Post(url string, data []byte, header ...http.Header) (*http.Re
 
 // Checks the status of the service.
 func (s *Service) CheckStatus() (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeOutSec*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeOutDur)
 	defer cancel()
 
 	url := s.GetAddress() + statusPath
@@ -152,5 +167,5 @@ func (s *Service) GetAddress() string {
 }
 
 func (s *Service) CreateClient() {
-	s.client = communicator.New(s.GetAddress(), timeOutSec)
+	s.client = communicator.New(s.GetAddress(), timeOutDur)
 }

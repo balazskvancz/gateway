@@ -19,6 +19,18 @@ func TestValidateServices(t *testing.T) {
 			err:   errServicesSliceIsEmpty,
 		},
 		{
+			name: "the functions returns err, if the service has zero length prefix",
+			srvcs: &[]Service{
+				{
+					Prefix: "",
+				},
+				{
+					Prefix: "/foo/baz/bar",
+				},
+			},
+			err: errServicesPrefixLength,
+		},
+		{
 			name: "the functions returns err, if the not every service has the same prefix length",
 			srvcs: &[]Service{
 				{
@@ -28,7 +40,7 @@ func TestValidateServices(t *testing.T) {
 					Prefix: "/foo/baz/bar",
 				},
 			},
-			err: errservicesPrefixLength,
+			err: errServicesSamePrefixLength,
 		},
 		{
 			name: "the functions not returning err, if every service is good",
@@ -51,8 +63,6 @@ func TestValidateServices(t *testing.T) {
 			if gotErr != tc.err {
 				t.Errorf("expected: %v; got: %v\n", tc.err, gotErr)
 			}
-
 		})
-
 	}
 }

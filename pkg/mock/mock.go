@@ -10,7 +10,8 @@ import (
 const (
 	path = "./mocks.json"
 
-	sleepSecond = 3
+	sleepSecond   = 3
+	sleepDuration = sleepSecond * time.Second
 )
 
 type MockListener interface {
@@ -65,7 +66,7 @@ func (m *Mock) WatchReload() {
 
 	for {
 		// In every iteration we wait for x amount of sec.
-		time.Sleep(sleepSecond * time.Second)
+		time.Sleep(sleepDuration)
 
 		if !m.isModified() {
 			continue

@@ -18,6 +18,10 @@ var (
 	errServiceNil    = errors.New("service is nil")
 )
 
+var (
+	ErrServiceNotExists = errors.New("service not exists")
+)
+
 const (
 	StateRegistered = iota
 	StateUnknown

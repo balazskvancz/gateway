@@ -118,7 +118,7 @@ func (gw *Gateway) GetService(name string) (*service.Service, error) {
 	servEntity := gw.serviceRegistry.GetServiceByName(name)
 
 	if servEntity == nil {
-		return nil, nil
+		return nil, registry.ErrServiceNotExists
 	}
 
 	srvc := servEntity.GetService()

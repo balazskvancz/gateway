@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 type HttpClient struct {
@@ -16,8 +17,8 @@ type HttpClient struct {
 
 	header http.Header
 
-	hostPort   string // Contains the host:port of the given service.
-	timeOutSec int    // Timeout, for each HTTP request.
+	hostPort   string        // Contains the host:port of the given service.
+	timeOutDur time.Duration // Timeout, for each HTTP request.
 }
 
 type GoRequest interface {
@@ -28,14 +29,14 @@ type GoRequest interface {
 var _ GoRequest = (*HttpClient)(nil)
 
 // Creates a new pointer.
-func New(hostPort string, timeOutSec int) *HttpClient {
+func New(hostPort string, timeOutDur time.Duration) *HttpClient {
 	return &HttpClient{
 		chansPool: sync.Pool{
 			New: func() interface{} { return new(GChan) },
 		},
 		Client:     &http.Client{},
 		hostPort:   hostPort,
-		timeOutSec: timeOutSec,
+		timeOutDur: timeOutDur,
 	}
 }
 
