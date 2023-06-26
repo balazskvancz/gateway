@@ -1,13 +1,11 @@
-package router
+package gateway
 
 import (
 	"fmt"
 	"testing"
-
-	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
-var emptyChain = createNewMWChain(func(g *gcontext.GContext) {})
+var emptyChain = createNewMWChain(func(g *GContext) {})
 
 func TestCreateNodeList(t *testing.T) {
 

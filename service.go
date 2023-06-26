@@ -1,4 +1,4 @@
-package service
+package gateway
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/balazskvancz/gateway/pkg/communicator"
-	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
 const (
@@ -83,7 +82,7 @@ func ValidateServices(srvcs services) error {
 }
 
 // A handler for each service.
-func (s *Service) Handle(ctx *gcontext.GContext) {
+func (s *Service) Handle(ctx *GContext) {
 	if !s.IsAvailable {
 		ctx.SendUnavailable()
 

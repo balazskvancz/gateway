@@ -1,4 +1,4 @@
-package registry
+package gateway
 
 import (
 	"errors"
@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/balazskvancz/gateway/pkg/service"
 	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
@@ -30,7 +29,7 @@ const (
 )
 
 type serviceEntity struct {
-	service *service.Service
+	service *Service
 
 	state uint8
 }
@@ -43,7 +42,7 @@ type Registry struct {
 }
 
 // Creates a new registry with empty slice of services.
-func NewRegistry(services *[]service.Service, sleepMin uint8) (*Registry, error) {
+func NewRegistry(services *[]Service, sleepMin uint8) (*Registry, error) {
 	if services == nil {
 		return nil, errServiceMapNil
 	}
@@ -61,7 +60,7 @@ func NewRegistry(services *[]service.Service, sleepMin uint8) (*Registry, error)
 			continue
 		}
 
-		serv := &service.Service{
+		serv := &Service{
 			Protocol:     serv.Protocol,
 			Name:         serv.Name,
 			Host:         serv.Host,
@@ -97,7 +96,7 @@ func NewRegistry(services *[]service.Service, sleepMin uint8) (*Registry, error)
 }
 
 // Adds a new service to the registry.
-func (r *Registry) AddService(srvc *service.Service) error {
+func (r *Registry) AddService(srvc *Service) error {
 	if r == nil {
 		return errRegistryNil
 	}
@@ -184,7 +183,7 @@ func (r *Registry) UpdateStatus() {
 		for _, s := range r.services {
 			isAvailable, err := s.GetService().CheckStatus()
 
-			if err != nil && errors.Is(err, service.ErrServiceNotAvailable) {
+			if err != nil && errors.Is(err, ErrServiceNotAvailable) {
 				r.setState(s.GetService().Prefix, StateUnknown)
 				continue
 			}
@@ -218,7 +217,7 @@ func (r *Registry) setState(serv string, state uint8) {
 // ------------------
 
 // Returns the service itself from the entity.
-func (sE *serviceEntity) GetService() *service.Service {
+func (sE *serviceEntity) GetService() *Service {
 	return sE.service
 }
 

@@ -1,11 +1,10 @@
-package router
+package gateway
 
 import (
 	"fmt"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -119,16 +118,16 @@ func test_contains(str string, arr *[]string) bool {
 	return false
 }
 
-func test_normalizeRoute(str string) string {
-	if !strings.Contains(str, ":id") {
-		return str
-	}
+// func test_normalizeRoute(str string) string {
+// if !strings.Contains(str, ":id") {
+// return str
+// }
 
-	return strings.ReplaceAll(str, ":id", "1")
-}
+// return strings.ReplaceAll(str, ":id", "1")
+// }
 
 func BenchmarkPool(b *testing.B) {
-	router := New(nil)
+	router := newRouter(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	writer := httptest.NewRecorder()
@@ -139,7 +138,7 @@ func BenchmarkPool(b *testing.B) {
 }
 
 func BenchmarkContext(b *testing.B) {
-	router := New(nil)
+	router := newRouter(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	writer := httptest.NewRecorder()

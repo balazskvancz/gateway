@@ -1,38 +1,36 @@
-package router
+package gateway
 
 import (
 	"testing"
-
-	"github.com/balazskvancz/gateway/pkg/gcontext"
 )
 
 func TestMiddleware(t *testing.T) {
 	firstChain := createNewMWChain(
-		func(g *gcontext.GContext) {}, // the handler
-		func(g *gcontext.GContext) {},
-		func(g *gcontext.GContext) {},
-		func(g *gcontext.GContext) {},
+		func(g *GContext) {}, // the handler
+		func(g *GContext) {},
+		func(g *GContext) {},
+		func(g *GContext) {},
 	)
 
 	secondChain := createNewMWChain(
-		func(g *gcontext.GContext) {}, // the handler
-		func(g *gcontext.GContext) { g.Next() },
-		func(g *gcontext.GContext) {},
-		func(g *gcontext.GContext) {},
+		func(g *GContext) {}, // the handler
+		func(g *GContext) { g.Next() },
+		func(g *GContext) {},
+		func(g *GContext) {},
 	)
 
 	thirdChain := createNewMWChain(
-		func(g *gcontext.GContext) {}, // the handler
-		func(g *gcontext.GContext) { g.Next() },
-		func(g *gcontext.GContext) { g.Next() },
-		func(g *gcontext.GContext) {},
+		func(g *GContext) {}, // the handler
+		func(g *GContext) { g.Next() },
+		func(g *GContext) { g.Next() },
+		func(g *GContext) {},
 	)
 
 	fourthChain := createNewMWChain(
-		func(g *gcontext.GContext) {}, // the handler
-		func(g *gcontext.GContext) { g.Next() },
-		func(g *gcontext.GContext) { g.Next() },
-		func(g *gcontext.GContext) { g.Next() },
+		func(g *GContext) {}, // the handler
+		func(g *GContext) { g.Next() },
+		func(g *GContext) { g.Next() },
+		func(g *GContext) { g.Next() },
 	)
 
 	tt := []struct {
@@ -64,7 +62,7 @@ func TestMiddleware(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := gcontext.New(nil, nil)
+			ctx := newContext(nil, nil)
 
 			tc.chain.run(ctx)
 

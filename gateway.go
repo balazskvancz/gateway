@@ -8,17 +8,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/balazskvancz/gateway/pkg/config"
 	"github.com/balazskvancz/gateway/pkg/mock"
-	"github.com/balazskvancz/gateway/pkg/registry"
-	"github.com/balazskvancz/gateway/pkg/router"
-	"github.com/balazskvancz/gateway/pkg/service"
 )
 
 type Gateway struct {
 	address         int
-	mux             *router.Router
-	serviceRegistry *registry.Registry
+	mux             *Router
+	serviceRegistry *Registry
 
 	isProd bool
 }
@@ -26,28 +22,26 @@ type Gateway struct {
 // Returns a new instance of the gateway.
 func New() (*Gateway, error) {
 	// Read config.
-	cfg, err := config.GetConfig()
-
+	cfg, err := GetConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	err = service.ValidateServices(cfg.Services)
+	if err := ValidateServices(cfg.Services); err != nil {
+		return nil, err
+	}
 
+	registry, err := NewRegistry(cfg.Services, cfg.SleepMin)
 	if err != nil {
 		return nil, err
 	}
 
-	registry, err := registry.NewRegistry(cfg.Services, cfg.SleepMin)
-
-	if err != nil {
-		return nil, err
-	}
+	router := newRouter(withServiceRegistry(registry))
 
 	return &Gateway{
 		address:         cfg.Address,
 		serviceRegistry: registry,
-		mux:             router.New(registry),
+		mux:             router,
 		isProd:          cfg.IsProd,
 	}, nil
 }
@@ -114,17 +108,17 @@ func (gw *Gateway) Start() {
 // Gets service by its name. Returns error if, there is
 // no service by the given name. Also returns error
 // if the certain service is not available the that time.
-func (gw *Gateway) GetService(name string) (*service.Service, error) {
+func (gw *Gateway) GetService(name string) (*Service, error) {
 	servEntity := gw.serviceRegistry.GetServiceByName(name)
 
 	if servEntity == nil {
-		return nil, registry.ErrServiceNotExists
+		return nil, ErrServiceNotExists
 	}
 
 	srvc := servEntity.GetService()
 
 	if !srvc.IsAvailable {
-		return nil, service.ErrServiceNotAvailable
+		return nil, ErrServiceNotAvailable
 	}
 
 	return srvc, nil
@@ -138,7 +132,7 @@ func (gw *Gateway) ListenForMocks(mocks *[]mock.MockCall) {
 		return
 	}
 
-	gw.mux.SetMocks(mocks)
+	// gw.mux.SetMocks(mocks)
 }
 
 // -----------------
@@ -146,14 +140,14 @@ func (gw *Gateway) ListenForMocks(mocks *[]mock.MockCall) {
 // -----------------
 
 // Register a custom route with method @GET.
-func (gw *Gateway) Get(url string, handler router.HandlerFunc, mw ...router.HandlerFunc) {
+func (gw *Gateway) Get(url string, handler HandlerFunc, mw ...HandlerFunc) {
 	if err := gw.mux.Get(url, handler, mw...); err != nil {
 		fmt.Printf("err :%v\n", err)
 	}
 }
 
 // Register a custom route with method @GET.
-func (gw *Gateway) Post(url string, handler router.HandlerFunc, mw ...router.HandlerFunc) {
+func (gw *Gateway) Post(url string, handler HandlerFunc, mw ...HandlerFunc) {
 	gw.mux.Post(url, handler, mw...)
 }
 
@@ -161,9 +155,9 @@ func (gw *Gateway) Post(url string, handler router.HandlerFunc, mw ...router.Han
 // |  MIDDLEWARES  |
 // -----------------
 
-// Registering Middleware to the router.
-func (gw *Gateway) RegisterMiddleware(part string, handler router.HandlerFunc) {
-	mw := router.CreateMiddleware(part, handler)
+// Registering Middleware to the
+func (gw *Gateway) RegisterMiddleware(part string, handler HandlerFunc) {
+	mw := CreateMiddleware(part, handler)
 
 	if mw == nil {
 		return

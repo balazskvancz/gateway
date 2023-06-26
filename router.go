@@ -1,4 +1,4 @@
-package router
+package gateway
 
 import (
 	"errors"
@@ -6,10 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-
-	"github.com/balazskvancz/gateway/pkg/gcontext"
-	"github.com/balazskvancz/gateway/pkg/mock"
-	"github.com/balazskvancz/gateway/pkg/registry"
+	/// "github.com/balazskvancz/gateway/pkg/mock"
 )
 
 const (
@@ -20,11 +17,11 @@ var (
 	errMustStartWithApi = errors.New(`route must start with "/api"`)
 )
 
-type HandlerFunc func(*gcontext.GContext)
+type HandlerFunc func(*GContext)
 
 type Router struct {
 	methodTrees    map[string]*tree
-	serviceRegisty *registry.Registry
+	serviceRegisty *Registry
 	contextPool    sync.Pool
 
 	mockTree *tree
@@ -38,20 +35,30 @@ type Router struct {
 
 var _ http.Handler = (*Router)(nil)
 
-// Creates a new instance of the router and returns a pointer to it.
-func New(registry *registry.Registry) *Router {
-	if registry == nil {
-		return nil
-	}
+type routerOptionFunc func(*Router)
 
-	return &Router{
+func withServiceRegistry(reg *Registry) routerOptionFunc {
+	return func(r *Router) {
+		r.serviceRegisty = reg
+	}
+}
+
+// Creates a new instance of the router and returns a pointer to it.
+func newRouter(opts ...routerOptionFunc) *Router {
+	r := &Router{
 		methodTrees: make(map[string]*tree),
 		contextPool: sync.Pool{
-			New: func() interface{} { return new(gcontext.GContext) },
+			New: func() interface{} { return newContext(nil, nil) },
 		},
-		serviceRegisty: registry,
-		middlewares:    make(map[string]HandlerFunc), // Empty slice.
+		// serviceRegisty: NewRegistry(),
+		middlewares: make(map[string]HandlerFunc), // Empty slice.
 	}
+
+	for _, o := range opts {
+		o(r)
+	}
+
+	return r
 }
 
 // Setting notFoundHandler for Router.
@@ -65,7 +72,7 @@ func (router *Router) SetOptionsHandler(handler HandlerFunc) {
 }
 
 // Running the given context.
-func (router *Router) run(ctx *gcontext.GContext) {
+func (router *Router) run(ctx *GContext) {
 	if ctx.GetRequestMethod() == http.MethodOptions {
 		if router.optionsHandler != nil {
 			router.optionsHandler(ctx)
@@ -134,21 +141,21 @@ func (router *Router) run(ctx *gcontext.GContext) {
 }
 
 func (router *Router) _poolTester(w http.ResponseWriter, r *http.Request) {
-	ctx := router.contextPool.Get().(*gcontext.GContext)
+	ctx := router.contextPool.Get().(*GContext)
 	ctx.Reset(w, r) // Setting the context, to the current params.
 	// After the run of the handler, put it back to the pool.
 	router.contextPool.Put(ctx)
 }
 
 func (router *Router) _createTester(w http.ResponseWriter, r *http.Request) {
-	c := gcontext.New(w, r)
+	c := newContext(w, r)
 
 	c.SendOk()
 }
 
 // Function to implement the http.Handler.
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := router.contextPool.Get().(*gcontext.GContext)
+	ctx := router.contextPool.Get().(*GContext)
 	ctx.Reset(w, r) // Setting the context to the current params.
 
 	fmt.Printf("[%s]: %s\n", ctx.GetRequestMethod(), ctx.GetFullUrl())
@@ -160,36 +167,38 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Sets the mocks for the router.
-func (router *Router) SetMocks(mocks *[]mock.MockCall) {
-	tree := createTree()
+func (router *Router) SetMocks(mocks *[]interface{} /*mock.MockCall*/) {
+	/*
+		tree := createTree()
 
-	// Ranging over the mocks, we create a nodeList
-	// and then append to the tree.
-	// And finally, setting the tree to the routers
-	// current mock tree.
-	for _, m := range *mocks {
-		node, err := createNodeList(m.Url, createNewMWChain(func(g *gcontext.GContext) {
-			// In this scenario, the mock endpoint is only returning
-			// some kind of JSON object.
-			header := http.Header{}
-			header.Add("Content-Type", gcontext.JsonContentType)
+		// Ranging over the mocks, we create a nodeList
+		// and then append to the tree.
+		// And finally, setting the tree to the routers
+		// current mock tree.
+			for _, m := range *mocks {
+				node, err := createNodeList(m.Url, createNewMWChain(func(g *GContext) {
+					// In this scenario, the mock endpoint is only returning
+					// some kind of JSON object.
+					header := http.Header{}
+					header.Add("Content-Type", JsonContentType)
 
-			fmt.Printf("MOCK CALL FOR: %s\n", m.Url)
-			g.SendRaw(m.Data, m.StatusCode, header)
-		}))
+					fmt.Printf("MOCK CALL FOR: %s\n", m.Url)
+					g.SendRaw(m.Data, m.StatusCode, header)
+				}))
 
-		if err != nil {
-			fmt.Printf("[ROUTER]: mock create node list error: %v\n", err)
+				if err != nil {
+					fmt.Printf("[ROUTER]: mock create node list error: %v\n", err)
 
-			continue
-		}
+					continue
+				}
 
-		if err := tree.addToTree(node); err != nil {
-			fmt.Printf("[ROUTER]: mock tree add error: %v\n", err)
-		}
-	}
+				if err := tree.addToTree(node); err != nil {
+					fmt.Printf("[ROUTER]: mock tree add error: %v\n", err)
+				}
+			}
 
-	router.mockTree = tree
+			router.mockTree = tree
+	*/
 }
 
 // ----------------------
@@ -334,5 +343,61 @@ func (r *Router) DisplayRoutes() {
 		fmt.Println(k)
 		v.getRoutes()
 		fmt.Println("*****")
+	}
+}
+
+// 	----------------------
+//  | 		MIDDLEWARES    |
+//  ----------------------
+
+type middlewareChain struct {
+	chain *[]HandlerFunc
+}
+
+type Middleware struct {
+	part    string
+	handler HandlerFunc
+}
+
+// Creates a new handleChain.
+func createNewMWChain(handler HandlerFunc, mw ...HandlerFunc) *middlewareChain {
+	if handler == nil {
+		return nil
+	}
+
+	chain := []HandlerFunc{}
+
+	// Adding the middlwares to the slice.
+	for _, mwH := range mw {
+		chain = append(chain, mwH)
+	}
+
+	// Appends the handler to the end.
+	chain = append(chain, handler)
+
+	return &middlewareChain{
+		chain: &chain,
+	}
+}
+
+// Gets the last element of the MW chain, which is the handler itself.
+func (mw *middlewareChain) getLast() HandlerFunc {
+	return (*mw.chain)[len(*mw.chain)-1]
+}
+
+// Executes the chain of middlewares. The last element is the handler itself.
+func (mw *middlewareChain) run(ctx *GContext) {
+	canContinue := true
+
+	for _, handler := range *mw.chain {
+		if ctx.GetIndex() == 0 || canContinue {
+			handler(ctx)
+
+			canContinue = ctx.IsNextCalled()
+			ctx.NextIteration()
+			continue
+		}
+
+		break
 	}
 }

@@ -1,9 +1,8 @@
-package config
+package gateway
 
 import (
 	"encoding/json"
-
-	"github.com/balazskvancz/gateway/pkg/service"
+	"os"
 )
 
 const (
@@ -15,7 +14,7 @@ type Config struct {
 	IsProd   bool  `json:"isProd"`
 	SleepMin uint8 `json:"sleepMin"`
 
-	Services *[]service.Service `json:"services"`
+	Services *[]Service `json:"services"`
 }
 
 // Reads the main config for the Gateway itself.
@@ -33,4 +32,15 @@ func GetConfig() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Loads the content file at the given path.
+func LoadConfigFile(path string) ([]byte, error) {
+	b, err := os.ReadFile(path)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return b, nil
 }

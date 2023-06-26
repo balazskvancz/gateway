@@ -1,13 +1,11 @@
-package registry
+package gateway
 
 import (
 	"errors"
 	"testing"
-
-	"github.com/balazskvancz/gateway/pkg/service"
 )
 
-var mockServices = []service.Service{
+var mockServices = []Service{
 	{
 		Name:   "mock-1",
 		Prefix: "/api/mock-1",
@@ -25,7 +23,7 @@ var mockRegisty, _ = NewRegistry(&mockServices, 1)
 func TestNewRegistry(t *testing.T) {
 	tt := []struct {
 		name     string
-		services *[]service.Service
+		services *[]Service
 
 		expectedError error
 	}{
@@ -36,7 +34,7 @@ func TestNewRegistry(t *testing.T) {
 		},
 		{
 			name:          "the functions return error if the given slice empty",
-			services:      &[]service.Service{},
+			services:      &[]Service{},
 			expectedError: errNoService,
 		},
 		{
@@ -122,7 +120,7 @@ func TestAddService(t *testing.T) {
 		name     string
 		registry *Registry
 
-		toBeAdded     *service.Service
+		toBeAdded     *Service
 		expectedError error
 	}{
 		{
@@ -140,7 +138,7 @@ func TestAddService(t *testing.T) {
 		{
 			name:     "the functions returns error, if the given prefix already exists",
 			registry: mockRegisty,
-			toBeAdded: &service.Service{
+			toBeAdded: &Service{
 				Prefix: "/api/mock-1",
 			},
 			expectedError: errServiceExists,
@@ -148,7 +146,7 @@ func TestAddService(t *testing.T) {
 		{
 			name:     "the functions doesnt return error, if it can register the service",
 			registry: mockRegisty,
-			toBeAdded: &service.Service{
+			toBeAdded: &Service{
 				Prefix: "/api/mock-3",
 			},
 			expectedError: nil,
