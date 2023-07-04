@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -16,15 +15,6 @@ const (
 	timeOutSec = 10
 
 	timeOutDur = timeOutSec * time.Second
-)
-
-var (
-	errServicesIsNil            = errors.New("services is nil")
-	errServicesPrefixLength     = errors.New("service prefix must be greater than zero")
-	errServicesSamePrefixLength = errors.New("service prefix must be same length")
-	errServicesSliceIsEmpty     = errors.New("services slice is empty")
-
-	ErrServiceNotAvailable = errors.New("service not available")
 )
 
 type Service struct {
@@ -82,7 +72,7 @@ func ValidateServices(srvcs services) error {
 }
 
 // A handler for each service.
-func (s *Service) Handle(ctx *GContext) {
+func (s *Service) Handle(ctx *Context) {
 	if !s.IsAvailable {
 		ctx.SendUnavailable()
 
@@ -98,7 +88,7 @@ func (s *Service) Handle(ctx *GContext) {
 // Sending @GET request to the service.
 func (s *Service) Get(url string, header ...http.Header) (*http.Response, error) {
 	if !s.IsAvailable {
-		return nil, ErrServiceNotAvailable
+		return nil, errServiceNotAvailable
 	}
 
 	// If there is any given
@@ -117,7 +107,7 @@ func (s *Service) Get(url string, header ...http.Header) (*http.Response, error)
 // Sending @POST request to the service.
 func (s *Service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
 	if !s.IsAvailable {
-		return nil, ErrServiceNotAvailable
+		return nil, errServiceNotAvailable
 	}
 
 	if len(header) > 0 {
@@ -154,7 +144,7 @@ func (s *Service) CheckStatus() (bool, error) {
 
 	if res.StatusCode != http.StatusOK {
 		s.IsAvailable = false
-		return false, ErrServiceNotAvailable
+		return false, errServiceNotAvailable
 	}
 
 	s.IsAvailable = true

@@ -183,7 +183,7 @@ func (r *Registry) UpdateStatus() {
 		for _, s := range r.services {
 			isAvailable, err := s.GetService().CheckStatus()
 
-			if err != nil && errors.Is(err, ErrServiceNotAvailable) {
+			if err != nil && errors.Is(err, errServiceNotAvailable) {
 				r.setState(s.GetService().Prefix, StateUnknown)
 				continue
 			}

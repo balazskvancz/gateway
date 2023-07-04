@@ -3,12 +3,11 @@ package gateway
 import (
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
-	"sync"
 
 	"github.com/balazskvancz/gateway/pkg/utils"
 )
@@ -19,181 +18,104 @@ const (
 	JsonContentType     = "application/json"
 	TextHtmlContentType = "text/html"
 	XmlContentType      = "application/xml"
+
+	maxParams uint8 = 8
 )
 
-var (
-	errParamNotExists = errors.New("requested param not exists")
+type pathParam struct {
+	key   string
+	value string
+}
 
+var (
 	contextId uint64 = 0
 )
 
-type GContext struct {
+type contextIdChan <-chan uint64
+
+type Context struct {
 	writer  http.ResponseWriter
 	request *http.Request
 
-	params map[string]string
+	params []pathParam
 
-	mwIndex    uint8
 	nextCalled bool
 
-	contextId uint64
-
-	mutex sync.Mutex
-
-	// logger *logger
+	contextId     uint64
+	contextIdChan contextIdChan
 }
 
-// Creates and returns a new pointer to gctx.
-func newContext(w http.ResponseWriter, r *http.Request) *GContext {
-	// logger := NewLogger()
-
-	return &GContext{
-		writer:    w,
-		request:   r,
-		mwIndex:   0,
-		contextId: 0,
-		mutex:     sync.Mutex{},
+// newContext creates and returns a new context.
+func newContext(ciChan contextIdChan) *Context {
+	return &Context{
+		contextId:     contextId,
+		contextIdChan: ciChan,
+		params:        make([]pathParam, maxParams),
 	}
 }
 
-// Sets context to default state.
-func (ctx *GContext) Reset(w http.ResponseWriter, r *http.Request) {
-	ctx.mutex.Lock()
-	contextId += 1
-
-	// Just in case, if the logger is nil, we should create it.
-	// if ctx.logger == nil {
-	// ctx.logger = NewLogger()
-	// }
-
+// reset
+func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
 	ctx.request = r
 	ctx.writer = w
-	ctx.mwIndex = 0
-	ctx.nextCalled = false
-	ctx.contextId = contextId
+	ctx.params = ctx.params[:0]
 
-	ctx.mutex.Unlock()
-
-	// Int this case, there is a new request
-	// so we should write it to the log file.
-	// action := fmt.Sprintf("%s %s", ctx.GetRequestMethod(), ctx.GetFullUrl())
-	// go ctx.logger.writeToLog(contextId, stateStarted, action)
+	// És kiolvassuk az channelből érkező azonosítót is.
+	ctx.contextId = <-ctx.contextIdChan
 }
 
-// ------------------
-// | 	 MIDDLEWARE   |
-// ------------------
-
-// Calls the next element in handlerChain.
-func (ctx *GContext) Next() {
-	ctx.nextCalled = true
-}
-
-// Increments the middlewareIndex and resets the "nextCalled" flag.
-func (ctx *GContext) NextIteration() {
-	ctx.mwIndex = ctx.mwIndex + 1
-	ctx.nextCalled = false
-}
-
-// Returns whether the next is called in the chain.
-func (ctx *GContext) IsNextCalled() bool {
-	return ctx.nextCalled
-}
-
-// Returns the current index.
-func (ctx *GContext) GetIndex() uint8 {
-	return ctx.mwIndex
+// empty
+func (c *Context) empty() {
+	c.request = nil
+	c.writer = nil
 }
 
 // Request.
-
 // Returns the attached request.
-func (ctx *GContext) GetRequest() *http.Request {
+func (ctx *Context) GetRequest() *http.Request {
 	return ctx.request
 }
 
 // Returns the method of incoming request.
-func (ctx *GContext) GetRequestMethod() string {
+func (ctx *Context) GetRequestMethod() string {
 	if ctx == nil {
 		return ""
 	}
-
 	return ctx.request.Method
 }
 
 // Returns the full URL with all queryParams included.
-func (ctx *GContext) GetFullUrl() string {
+func (ctx *Context) GetFullUrl() string {
 	if ctx.request == nil {
-		fmt.Println("[CONTEXT]: request is nil")
 		return ""
 	}
-
 	return ctx.request.RequestURI
 }
 
 // Return the array, of url parts.
 // /foo/bar/baz => ["foo", "bar", "baz"]
-func (ctx *GContext) GetUrlParts() []string {
-	fullUrl := ctx.GetFullUrl()
-
-	return utils.GetUrlParts(fullUrl)
+func (ctx *Context) GetUrlParts() []string {
+	return utils.GetUrlParts(ctx.GetFullUrl())
 }
 
 // Returns the url, without query params, it there is any.
-func (ctx *GContext) GetUrlWithoutQueryParams() string {
-	fullUrl := ctx.GetFullUrl()
-
-	index := strings.Index(fullUrl, "?")
-
-	if index > 0 {
-		return fullUrl[:index]
-	}
-
-	return fullUrl
+func (ctx *Context) GetUrlWithoutQueryParams() string {
+	return removeQueryParts(ctx.GetFullUrl())
 }
 
-func (ctx *GContext) GetQueryParams() *map[string]string {
-	params, url := make(map[string]string), ctx.GetFullUrl()
-
-	index := strings.Index(url, "?")
-
-	// If there no "?", there isnt any param.
-	if index == -1 {
-		return &params
-	}
-
-	// Remove the first of the part of the url.
-	paramsPart := url[(index + 1):]
-
-	// Every param is divided by "&".
-	allParams := strings.Split(paramsPart, "&")
-
-	for _, val := range allParams {
-		splitted := strings.Split(val, "=")
-
-		if len(splitted) > 1 {
-			params[splitted[0]] = splitted[1]
-		}
-	}
-
-	return &params
+func (ctx *Context) GetQueryParams() url.Values {
+	return ctx.request.URL.Query()
 }
 
 // Returns one params value based on its key.
-func (ctx *GContext) GetQueryParam(key string) string {
-	params := ctx.GetQueryParams()
+func (ctx *Context) GetQueryParam(key string) string {
+	query := ctx.GetQueryParams()
 
-	v, e := (*params)[key]
-
-	if !e {
-		return ""
-	}
-
-	return v
+	return query.Get(key)
 }
 
 // Get the body in bytes.
-func (ctx *GContext) GetRawBody() ([]byte, error) {
+func (ctx *Context) GetRawBody() ([]byte, error) {
 	req := ctx.request
 
 	b, err := io.ReadAll(req.Body)
@@ -209,7 +131,7 @@ func (ctx *GContext) GetRawBody() ([]byte, error) {
 // Reads the request body, tries to parse into given object.
 // It must be a pointer, otherwise wont work.
 // Also, it returns error, if somethting went bad.
-func (ctx *GContext) ReadJsonBody(data interface{}) error {
+func (ctx *Context) ReadJsonBody(data interface{}) error {
 	b, err := ctx.GetRawBody()
 
 	if err != nil {
@@ -220,19 +142,19 @@ func (ctx *GContext) ReadJsonBody(data interface{}) error {
 }
 
 // Returns all the headers from the request.
-func (ctx *GContext) GetRequestHeaders() http.Header {
+func (ctx *Context) GetRequestHeaders() http.Header {
 	return ctx.request.Header
 }
 
 // Return one specific headers value, with given key.
-func (ctx *GContext) GetRequestHeader(key string) string {
+func (ctx *Context) GetRequestHeader(key string) string {
 	header := ctx.GetRequestHeaders()
 
 	return header.Get(key)
 }
 
 // Returns te content-type of the original request.
-func (ctx *GContext) GetContentType() string {
+func (ctx *Context) GetContentType() string {
 	return ctx.GetRequestHeader(ctHeader)
 }
 
@@ -241,25 +163,25 @@ func (ctx *GContext) GetContentType() string {
 // ----------------
 
 // Sets the params to the context.
-func (ctx *GContext) SetParams(p map[string]string) {
-	ctx.params = p
+func (ctx *Context) setParams(params []pathParam) {
+	ctx.params = params
 }
 
 // Get params value by certain key.
-func (ctx *GContext) GetParam(key string) (string, error) {
-	v, ex := ctx.params[key]
-
-	if !ex {
-		return "", errParamNotExists
+func (ctx *Context) GetParam(key string) string {
+	for _, entry := range ctx.params {
+		if entry.key == key {
+			return entry.value
+		}
 	}
 
-	return v, nil
+	return ""
 }
 
 // Response
 
 // Writes the response body, with given byte[] and Content-type.
-func (ctx *GContext) SendRaw(b []byte, statusCode int, header http.Header) {
+func (ctx *Context) SendRaw(b []byte, statusCode int, header http.Header) {
 	ctx.nextCalled = false
 
 	writer := ctx.writer
@@ -290,7 +212,7 @@ func (ctx *GContext) SendRaw(b []byte, statusCode int, header http.Header) {
 }
 
 // Sends JSON response to client.
-func (ctx *GContext) SendJson(data interface{}) {
+func (ctx *Context) SendJson(data interface{}) {
 	b, err := json.Marshal(data)
 
 	if err != nil {
@@ -312,7 +234,7 @@ func createContentTypeHeader(ct string) http.Header {
 }
 
 // Send XML response to client.
-func (ctx *GContext) SendXML(data interface{}) {
+func (ctx *Context) SendXML(data interface{}) {
 	b, err := xml.Marshal(data)
 
 	if err != nil {
@@ -325,20 +247,20 @@ func (ctx *GContext) SendXML(data interface{}) {
 }
 
 // Sending a HTTP 404 error.
-func (ctx *GContext) SendNotFound() {
+func (ctx *Context) SendNotFound() {
 	ctx.nextCalled = false
 	ctx.writer.WriteHeader(http.StatusNotFound)
 }
 
 // Sending basic HTTP 200.
-func (ctx *GContext) SendOk() {
+func (ctx *Context) SendOk() {
 	ctx.nextCalled = false
 	ctx.SendRaw(nil, http.StatusOK, http.Header{})
 }
 
 // Sending HTTP 401 error, if the request
 // doesnt have the required permissions.
-func (ctx *GContext) SendUnauthorized() {
+func (ctx *Context) SendUnauthorized() {
 	ctx.nextCalled = false
 	ctx.SendRaw(nil, http.StatusUnauthorized, http.Header{})
 }
@@ -346,13 +268,13 @@ func (ctx *GContext) SendUnauthorized() {
 // Sends `service unavailable` error, if the
 // given service hasnt responded or its state
 // is also unavailable.
-func (ctx *GContext) SendUnavailable() {
+func (ctx *Context) SendUnavailable() {
 	ctx.nextCalled = false
 	ctx.SendRaw(nil, http.StatusServiceUnavailable, http.Header{})
 }
 
 // Sends a text error with HTTP 400 code in header.
-func (ctx *GContext) SendError(msg ...string) {
+func (ctx *Context) SendError(msg ...string) {
 	ctx.nextCalled = false
 	b := []byte{}
 
