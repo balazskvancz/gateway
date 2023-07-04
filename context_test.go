@@ -59,6 +59,7 @@ func TestBasicRequest(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := newContext(getContextIdChannel())
+			ctx.reset(nil, tc.req)
 
 			if ctx.GetRequestMethod() != tc.expectedMethod {
 				t.Errorf("expected method: %s; got: %s\n", tc.expectedMethod, ctx.GetRequestMethod())
@@ -117,6 +118,7 @@ func TestSendJson(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			ctx := newContext(getContextIdChannel())
+			ctx.reset(recorder, nil)
 
 			ctx.SendJson(tc.data)
 
@@ -136,8 +138,6 @@ func TestSendJson(t *testing.T) {
 
 		})
 	}
-
-	httptest.NewRecorder()
 }
 
 func TestSendNotFound(t *testing.T) {
@@ -154,6 +154,7 @@ func TestSendNotFound(t *testing.T) {
 			rec := httptest.NewRecorder()
 
 			ctx := newContext(getContextIdChannel())
+			ctx.reset(rec, nil)
 
 			ctx.SendNotFound()
 
@@ -178,6 +179,7 @@ func TestSendOk(t *testing.T) {
 			rec := httptest.NewRecorder()
 
 			ctx := newContext(getContextIdChannel())
+			ctx.reset(rec, nil)
 
 			ctx.SendOk()
 
