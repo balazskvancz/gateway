@@ -4,220 +4,468 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/balazskvancz/gateway/pkg/utils"
+	"sync"
 )
 
-var (
-	errConfusingRoute    = errors.New("rotue is confusing")
-	errFnIsNil           = errors.New("handlerfunc is nil")
-	errRootIsNil         = errors.New("root is nil")
-	errRouteAlreadyExits = errors.New("route alreay exists")
-	errRouteToShort      = errors.New("route must be 2 path long")
+//
+// URLs are stored in the form of: /api/foo/{resource}/{id}
+// where „resource” and „id” are the two path params
+// of the request.
+//
+// Examples of matching urls for the scheme above:
+//	/api/foo/products/1										-> resource="products" 		id="1"
+// 	/api/foo/categories/example-category 	-> resource="categories"  id="example-category"
+//
+// Due to the way we store these routes, there is a chance of trying to store
+// ambigoues routes aswell. That obviously would cause a bad behaviour.
+// Example for these routes:
+//
+// /api/{resource}/get
+// /api/products/get
+//
+// The two above would cause an error, however the two 2 below would not:
+//
+// /api/{resource}/get
+// /api/products/get-all
+//
+
+const (
+	slash = '/'
+
+	curlyStart = '{'
+	curlyEnd   = '}'
 )
 
 type tree struct {
+	mu   sync.RWMutex
 	root *node
 }
 
 type node struct {
-	part      string
-	childrens []*node
-	mwChain   *middlewareChain
+	key   string
+	value any
+
+	children []*node
 }
 
-// Creates a new tree.
-func createTree() *tree {
+func (n *node) isLeaf() bool {
+	return n.value != nil
+}
+
+func newTree() *tree {
 	return &tree{
-		root: createRootNode(),
+		mu: sync.RWMutex{},
 	}
 }
 
-// Creates the root, of empty tree.
-func createRootNode() *node {
-	return &node{
-		part:      rootPrefix, // It always contains the root prefix.
-		childrens: []*node{},  // Initializing an emtpy slice of nodes.
+// insert tries to store a key-value pair in the tree.
+// In case of unsuccessful insertion, we return the root of the error.
+func (t *tree) insert(key string, value any) error {
+	if t == nil {
+		return errTreeIsNil
 	}
+
+	if key == "" {
+		return errKeyIsEmpty
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if err := checkUrl(key); err != nil {
+		return err
+	}
+
+	// If the root is still nil, then the new node is the root.
+	if t.root == nil {
+		t.root = createNewNode(key, value)
+		return nil
+	}
+
+	return insertRec(t.root, key, value)
 }
 
-// Creates a list of nodes by the given url.
-// The last element will hold its HandlerFunc.
-func createNodeList(url string, mwChain *middlewareChain) (*node, error) {
-	if mwChain == nil {
-		return nil, errFnIsNil
-	}
+// iterateInsert iterates on the given node's children, and calls
+// insertRec on each one. If there is no error during the recursive calls
+// we successfully inserted the new node. Otherwise, if get an error that
+// differs from errNoCommonPrefix, we return it. If none of those happaned, we
+// simply return errNoCommonPrefix which indicates we were trying to
+// insert on a wrong branch.
+func iterateInsert(n *node, key string, value any) error {
+	for _, ch := range n.children {
+		insertErr := insertRec(ch, key, value)
 
-	urlParts := utils.GetUrlParts(url)
+		if insertErr == nil {
+			return nil
+		}
 
-	if len(urlParts) < 2 {
-		return nil, errRouteToShort
-	}
-
-	// Should not include "/api".
-	root := createNodeRecursively(urlParts, mwChain)
-
-	if root == nil {
-		return nil, errRootIsNil
-	}
-
-	return root, nil
-}
-
-// Helper function that creates the nodes recursively.
-func createNodeRecursively(urlParts []string, mwChain *middlewareChain) *node {
-	n := &node{
-		part: urlParts[0],
-	}
-
-	// If there is more parts, we create its children recursively.
-	if len(urlParts) > 1 {
-		n.childrens = []*node{
-			createNodeRecursively(urlParts[1:], mwChain),
+		if !errors.Is(insertErr, errNoCommonPrefix) {
+			return insertErr
 		}
 	}
 
-	// Meaning we are the bottom of the tree.
-	if len(urlParts) == 1 {
-		n.mwChain = mwChain
-	}
-
-	return n
+	return errNoCommonPrefix
 }
 
-// Adds a node to an already existing tree.
-func (t *tree) addToTree(n *node) error {
-	root := t.root
+// insertRec
+func insertRec(n *node, key string, value any) error {
+	lcp := longestCommonPrefix(n.key, key)
 
-	// Rules:
-	// The trees root value must be the same as the given nodes value.
-	// If there is a match, should return duplicateRouteErr
-
-	if root.part != n.part {
-		return errMustStartWithApi
+	// There is no chance of inserting in this branch.
+	if lcp == 0 {
+		return errNoCommonPrefix
 	}
 
-	if err := addToNode(root, n.childrens[0]); err != nil {
+	keyLen := len(key)
+
+	// If the length of the common part is equal to the inserting key,
+	// then the current node is place we wanted to insert in the first place.
+	if lcp == keyLen {
+		// If it is already leaf, return error.
+		if n.isLeaf() {
+			return errKeyIsAlreadyStored
+		}
+
+		// Otherwise we simply the store the value and we are done.
+		n.value = value
+
+		return nil
+	}
+
+	// Three other possibilities:
+	// 		1) the current node's key is longer than the LCP => must split keys,
+	// 		2) current node's are same as lcp, and new key is longer =>,
+	// 		3) otherwise the new node should be amongs the children of the current node.
+
+	if len(n.key) > lcp {
+		cNewNode := createNewNode(n.key[lcp:], n.value, n.children...)
+		newNode := createNewNode(key[lcp:], value)
+
+		n.value = nil
+		n.key = n.key[:lcp]
+		n.children = []*node{cNewNode, newNode}
+
+		return nil
+	}
+
+	keyRem := key[lcp:]
+
+	err := iterateInsert(n, keyRem, value)
+
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, errNoCommonPrefix) {
 		return err
+	}
+
+	addToChildren(n, createNewNode(keyRem, value))
+
+	return nil
+}
+
+func addToChildren(n, newNode *node) {
+	n.children = append(n.children, newNode)
+}
+
+// checkUrl checks the given of errors such as missing slash prefix
+// or bad path params.
+func checkUrl(url string) error {
+	// Leading slash.
+	if url[0] != slash {
+		return errMissingSlashPrefix
+	}
+
+	// Trailing slash.
+	if url[len(url)-1] == slash {
+		return errPresentSlashSuffix
+	}
+
+	// Check for path params, and check for its syntax.
+	return checkPathParams(url)
+}
+
+func checkPathParams(url string) error {
+	// If there is none of the curly brackets, we are good to go.
+	if !strings.ContainsRune(url, curlyStart) && !strings.ContainsRune(url, curlyEnd) {
+		return nil
+	}
+
+	var (
+		insideParam = false
+		counter     = 0
+	)
+
+	for counter < len(url) {
+		if url[counter] == slash {
+			// If we are inside a path param, there cant be a slash.
+			if insideParam {
+				return errBadPathParamSyntax
+			}
+		}
+
+		if url[counter] == curlyStart {
+			if insideParam {
+				return errBadPathParamSyntax
+			}
+
+			insideParam = true
+		}
+
+		if url[counter] == curlyEnd {
+			if !insideParam {
+				return errBadPathParamSyntax
+			}
+			insideParam = false
+		}
+
+		counter++
+	}
+
+	// If we are still inside a path param
+	// after the url is ended, means error.
+	if insideParam {
+		return errBadPathParamSyntax
 	}
 
 	return nil
 }
 
-// Adds a node, to a leaf.
-func addToNode(treeLeaf *node, n *node) error {
-	//
-	var matchingEl *node
-
-	for _, ch := range treeLeaf.childrens {
-		if ch.part == n.part {
-			matchingEl = ch
-		}
+// checkTree does a basic check on the given tree, returns error
+// if either the tree or the root is nil.
+func checkTree(t *tree) error {
+	if t == nil {
+		return errTreeIsNil
 	}
 
-	// We we didnt find any matching part at this level,
-	// we should create one, and add it to the leaf.
-	if matchingEl == nil {
-		treeLeaf.childrens = append(treeLeaf.childrens, n)
+	if t.root == nil {
+		return errRootIsNil
+	}
+
+	return nil
+}
+
+// min returns the minimum of two given numbers.
+func min(num1, num2 int) int {
+	if num1 > num2 {
+		return num2
+	}
+
+	return num1
+}
+
+// longestCommonPrefix returns the length of the
+// longest common prefix of two given strings.
+func longestCommonPrefix(str1, str2 string) int {
+	var counter = 0
+
+	maxVal := min(len(str1), len(str2))
+
+	for counter < maxVal && str1[counter] == str2[counter] {
+		counter += 1
+	}
+
+	return counter
+}
+
+func createNewNode(key string, value any, children ...*node) *node {
+	n := &node{
+		key:      key,
+		value:    value,
+		children: make([]*node, 0),
+	}
+
+	if len(children) > 0 {
+		n.children = children
+	}
+
+	return n
+}
+
+func (t *tree) find(key string) *node {
+	if err := checkTree(t); err != nil {
+		return nil
+	}
+
+	if key == "" {
+		return nil
+	}
+
+	return findRec(t.root, key, false)
+}
+
+func findRec(n *node, key string, isWildcard bool) *node {
+	if n == nil {
+		return nil
+	}
+
+	// If the current node's key contains curlyStart char,
+	// that means there is a start of wildcard part.
+	if strings.ContainsRune(n.key, curlyStart) {
+		isWildcard = true
+	}
+
+	lcp := longestCommonPrefix(n.key, key)
+
+	// If there is nothing in common and it is not wildcard, then we are off.
+	if lcp == 0 && !isWildcard {
+		return nil
+	}
+
+	// In case of non wildcard part, normal string comp.
+	if !isWildcard {
+		if key == n.key {
+			return n
+		}
+
+		// If the current node's key is longer than the lcp, no match.
+		if lcp < len(n.key) {
+			return nil
+		}
+
+		// Otherwise have to look amongst the children recursively.
+		for _, c := range n.children {
+			if found := findRec(c, key[lcp:], isWildcard); found != nil {
+				return found
+			}
+		}
 
 		return nil
 	}
 
-	// If there is match, and this is the last, it means, we alreay have this route.
-	if n.mwChain != nil {
-		return errRouteAlreadyExits
+	var (
+		nodeKeyRem   = n.key[lcp:]
+		searchKeyRem = key[lcp:]
+	)
+
+	offset1, offset2, isStillWildcard := getOffsets(nodeKeyRem, searchKeyRem, true)
+
+	// Meaning we didnt shift until the last char, not a full match in this level.
+	if len(nodeKeyRem) != offset1 {
+		return nil
 	}
 
-	// If there the node hasnt got any more children,
-	// but the tobeadded node is not the last one,
-	// should return error, because the path is "confusing."
-	//
-	// eg1 => /api/foo			-> this route already registered
-	// eg2 => /api/foo/bar	-> this we want to register
-	if len(matchingEl.childrens) == 0 && n.mwChain == nil {
+	newSearchKey := searchKeyRem[offset2:]
 
+	// If there is nothing from the original search key
+	// we are on the exact node we were looking for.
+	if newSearchKey == "" {
+		// Only to check if this node is a leaf, or not.
+		if n.isLeaf() {
+			return n
+		}
+		return nil
 	}
 
-	// Now, we should continue, by calling this fn again
-	// with the found node, the insertable nodes child.
-	return addToNode(matchingEl, n.childrens[0])
-}
-
-// ----------------
-// |     Walk     |
-// ----------------
-
-// Returns the the node and a [:key] => :value map with the route params.
-func (t *tree) findNode(url string) (*node, map[string]string) {
-	if t == nil {
-		return nil, nil
-	}
-
-	if len(t.root.childrens) == 0 {
-		return nil, nil
-	}
-
-	uParts := utils.GetUrlParts(url)
-
-	lastNode, params := walkTree(t.root, uParts)
-
-	if lastNode == nil {
-		return nil, nil
-	}
-
-	return lastNode, params
-}
-
-func walkTree(n *node, parts []string) (*node, map[string]string) {
-	if len(parts) == 0 {
-		return nil, nil
-	}
-
-	params := make(map[string]string)
-	currPart := parts[0]
-
-	isRouteParam := strings.HasPrefix(n.part, ":")
-
-	// If the current nodes part doesnt match and it isnt a route param, return nil.
-	if n.part != currPart && !isRouteParam {
-		return nil, nil
-	}
-
-	if isRouteParam {
-		key := n.part[1:]
-
-		params[key] = currPart
-	}
-
-	var el *node
-
-	// If the current node, has a HandlerFunc,
-	// and we are at the routeParts last element,
-	// it means, we found a match.
-	if n.mwChain != nil && len(parts) == 1 {
-		return n, params
-	}
-
-	for _, ch := range n.childrens {
-		foundNode, p := walkTree(ch, parts[1:])
-
-		if foundNode != nil {
-			el = foundNode
-			params = p
+	// Have to continue search on the next level.
+	for _, ch := range n.children {
+		if found := findRec(ch, newSearchKey, isStillWildcard); found != nil {
+			return found
 		}
 	}
 
-	return el, params
+	return nil
 }
 
-func (t *tree) getRoutes() {
-	getRoutes(t.root)
+// getOffsets returns the offset of the first and second given string and whether it is still
+// a wildcard search. These offsets are displaying how far should each string be shifted, how long
+// is the common part including wildcard option.
+func getOffsets(storedKey, searchKey string, isWildcard bool) (int, int, bool) {
+	var (
+		i = 0
+		j = 0
+
+		storedKeyLen = len(storedKey)
+		searchKeyLen = len(searchKey)
+	)
+
+	for {
+		if i >= storedKeyLen {
+			break
+		}
+
+		if j >= searchKeyLen && !isWildcard {
+			break
+		}
+
+		if storedKey[i] == curlyStart {
+			isWildcard = true
+			i++
+			continue
+		}
+
+		// In case of closing a {id} part, we have to
+		// move forward in the search key aswell.
+		if storedKey[i] == curlyEnd {
+			isWildcard = false
+
+			cSearchRem := searchKey[j:]
+
+			nextSlashIdx := strings.IndexRune(cSearchRem, slash)
+
+			j += func() int {
+				// There is no other / remaining.
+				if nextSlashIdx == -1 {
+					return len(cSearchRem)
+				}
+				// Otherwise skip that amount.
+				return nextSlashIdx
+			}()
+
+			i++
+
+			continue
+		}
+
+		// If we are inside of a wildcard check,
+		// we only increment the stored keys counter.
+		if isWildcard {
+			i++
+			continue
+		}
+
+		if storedKey[i] != searchKey[j] {
+			break
+		}
+
+		i++
+		j++
+	}
+
+	return i, j, isWildcard
 }
 
-func getRoutes(n *node) {
-	fmt.Println(n.part)
+// Some helpers in case of troubleshooting.
+func (t *tree) displayTree() {
+	if t == nil {
+		fmt.Println("<nil> tree")
+		return
+	}
 
-	for _, c := range n.childrens {
-		getRoutes(c)
+	if t.root == nil {
+		fmt.Println("empty tree")
+		return
+	}
+
+	traverseDFS(t.root, 1)
+}
+
+func traverseDFS(n *node, lvl int) {
+	if n == nil {
+		return
+	}
+
+	nodeType := func() string {
+		if n.isLeaf() {
+			return "leaf"
+		}
+		return "node"
+	}
+
+	fmt.Printf("[%d] => %s (%s)\n", lvl, n.key, nodeType())
+
+	for _, c := range n.children {
+		traverseDFS(c, lvl+1)
 	}
 }
