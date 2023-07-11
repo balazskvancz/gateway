@@ -176,28 +176,13 @@ func (ctx *Context) GetParam(key string) string {
 	return ""
 }
 
-// Response
-
 // Writes the response body, with given byte[] and Content-type.
 func (ctx *Context) SendRaw(b []byte, statusCode int, header http.Header) {
 	writer := ctx.writer
 
-	for k, v := range header {
-		var value string
-
-		for i, vv := range v {
-			value = value + vv
-
-			if i != len(v)-1 {
-				value += ", "
-			}
-		}
-
-		writer.Header().Add(k, strings.Join(v, ";"))
-	}
-
 	writer.WriteHeader(statusCode)
 	writer.Write(b)
+	ctx.appendHttpHeader(header)
 }
 
 // Sends JSON response to client.
@@ -272,4 +257,19 @@ func (ctx *Context) SendError(msg ...string) {
 	}
 
 	ctx.SendRaw(b, http.StatusBadRequest, createContentTypeHeader(TextHtmlContentType))
+}
+
+func (ctx *Context) Pipe(res *http.Response) {
+	// We could use TeeReader if we want to know
+	// what are we writing to the request.
+	// r := io.TeeReader(res.Body, ctx.writer)
+	io.Copy(ctx.writer, res.Body)
+	ctx.appendHttpHeader(res.Header)
+	ctx.writer.WriteHeader(res.StatusCode)
+}
+
+func (ctx *Context) appendHttpHeader(header http.Header) {
+	for k, v := range header {
+		ctx.writer.Header().Add(k, strings.Join(v, "; "))
+	}
 }

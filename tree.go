@@ -35,6 +35,10 @@ const (
 	curlyEnd   = '}'
 )
 
+type (
+	predicateFunction func(*node) bool
+)
+
 type tree struct {
 	mu   sync.RWMutex
 	root *node
@@ -137,8 +141,10 @@ func insertRec(n *node, key string, value any) error {
 	// 		3) otherwise the new node should be amongs the children of the current node.
 
 	if len(n.key) > lcp {
-		cNewNode := createNewNode(n.key[lcp:], n.value, n.children...)
-		newNode := createNewNode(key[lcp:], value)
+		var (
+			cNewNode = createNewNode(n.key[lcp:], n.value, n.children...)
+			newNode  = createNewNode(key[lcp:], value)
+		)
 
 		n.value = nil
 		n.key = n.key[:lcp]
@@ -487,6 +493,10 @@ func findLongestMatchRec(n *node, key string) *node {
 
 // getAllLeaf returns all of leaf nodes.
 func (t *tree) getAllLeaf() []*node {
+	if err := checkTree(t); err != nil {
+		return nil
+	}
+
 	return getAllLeafRec(t.root)
 }
 
@@ -506,4 +516,32 @@ func getAllLeafRec(n *node) []*node {
 	}
 
 	return arr
+}
+
+// getByPredicate does a search in the tree based on given function.
+// It uses DFS as the algorithm to traverse the tree.
+func (t *tree) getByPredicate(fn predicateFunction) *node {
+	if err := checkTree(t); err != nil {
+		return nil
+	}
+
+	return getByPredicateRec(t.root, fn)
+}
+
+func getByPredicateRec(n *node, fn predicateFunction) *node {
+	if n == nil {
+		return nil
+	}
+
+	if fn(n) {
+		return n
+	}
+
+	for _, ch := range n.children {
+		if match := getByPredicateRec(ch, fn); match != nil {
+			return match
+		}
+	}
+
+	return nil
 }

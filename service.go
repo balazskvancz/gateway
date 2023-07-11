@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/balazskvancz/gateway/pkg/communicator"
@@ -32,70 +32,77 @@ type ServiceConfig struct {
 	Prefix   string `json:"prefix"`
 }
 
-type Service struct {
+type Service interface {
+	Handle(*Context)
+}
+
+type service struct {
 	*ServiceConfig
 	client *communicator.HttpClient
 
-	state serviceState
+	state      serviceState
+	clientPool sync.Pool
 }
 
-type services = *[]Service
+var _ Service = (*service)(nil)
+
+type services = *[]service
+
+func newService(conf *ServiceConfig) *service {
+	serv := &service{
+		state:         StateUnknown,
+		ServiceConfig: conf,
+	}
+
+	serv.clientPool = sync.Pool{
+		New: func() any {
+			return newHttpClient(withHostName(serv.GetAddress()))
+		},
+	}
+
+	return serv
+}
 
 // Validates the given services. Returns error if
 // something is not correct.
-func ValidateServices(srvcs services) error {
-	if srvcs == nil {
-		return errServicesIsNil
-	}
-
-	if len(*srvcs) == 0 {
+func validateServices(configs []*ServiceConfig) error {
+	if len(configs) == 0 {
 		return errServicesSliceIsEmpty
 	}
 
-	// Rule.
-	// Every services prefix must be have length and the parts must be equal.
-	prefixLength := len(strings.Split((*srvcs)[0].Prefix, "/"))
-
-	isZeroLengthOk, isSamePrefixOk := true, true
-
 	//
-	for _, service := range *srvcs {
+	for _, service := range configs {
 		if len(service.Prefix) == 0 {
-			isZeroLengthOk = false
+			return errNoService
 		}
-
-		if len(strings.Split(service.Prefix, "/")) != prefixLength {
-			isSamePrefixOk = false
-		}
-	}
-
-	if !isZeroLengthOk {
-		return errServicesPrefixLength
-	}
-
-	if !isSamePrefixOk {
-		return errServicesSamePrefixLength
 	}
 
 	return nil
 }
 
 // A handler for each service.
-func (s *Service) Handle(ctx *Context) {
+func (s *service) Handle(ctx *Context) {
 	if s.state != StateAvailable {
 		ctx.SendUnavailable()
 
 		return
 	}
 
-	// Forwarding the data to the the service.
-	b, code, header := s.client.Forwarder(ctx.GetRequest())
+	cl := s.clientPool.Get().(*httpClient)
+	defer s.clientPool.Put(cl)
 
-	ctx.SendRaw(b, code, header)
+	res, err := cl.pipe(ctx.GetRequest())
+	if err != nil {
+		// todo
+		ctx.SendInternalServerError()
+		return
+	}
+
+	ctx.Pipe(res)
 }
 
 // Sending @GET request to the service.
-func (s *Service) Get(url string, header ...http.Header) (*http.Response, error) {
+func (s *service) Get(url string, header ...http.Header) (*http.Response, error) {
 	if s.state != StateAvailable {
 		return nil, errServiceNotAvailable
 	}
@@ -114,7 +121,7 @@ func (s *Service) Get(url string, header ...http.Header) (*http.Response, error)
 }
 
 // Sending @POST request to the service.
-func (s *Service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
+func (s *service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
 	if s.state != StateAvailable {
 		return nil, errServiceNotAvailable
 	}
@@ -131,8 +138,8 @@ func (s *Service) Post(url string, data []byte, header ...http.Header) (*http.Re
 	return res, err
 }
 
-// Checks the status of the service.
-func (s *Service) CheckStatus() (bool, error) {
+// checkStatus checks the status of the service.
+func (s *service) checkStatus() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeOutDur)
 	defer cancel()
 
@@ -140,29 +147,33 @@ func (s *Service) CheckStatus() (bool, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		s.state = StateUnknown
-		return false, err
+		s.setState(StateUnknown)
+		return err
 	}
 
 	res, err := s.client.Do(req)
 	if err != nil {
-		s.state = StateRefused
-		return false, err
+		s.setState(StateRefused)
+		return err
 	}
 
 	if res.StatusCode != http.StatusOK {
-		s.state = StateRefused
-		return false, errServiceNotAvailable
+		s.setState(StateRefused)
+		return nil
 	}
 
-	s.state = StateAvailable
-	return true, nil
+	s.setState(StateAvailable)
+	return nil
 }
 
-func (s *Service) GetAddress() string {
+func (s *service) setState(state serviceState) {
+	s.state = state
+}
+
+func (s *service) GetAddress() string {
 	return fmt.Sprintf("%s://%s:%s", s.Protocol, s.Host, s.Port)
 }
 
-func (s *Service) CreateClient() {
+func (s *service) CreateClient() {
 	s.client = communicator.New(s.GetAddress(), timeOutDur)
 }

@@ -190,7 +190,7 @@ func (gw *Gateway) Start() {
 // Gets service by its name. Returns error if, there is
 // no service by the given name. Also returns error
 // if the certain service is not available the that time.
-func (gw *Gateway) GetService(name string) (*Service, error) {
+func (gw *Gateway) GetService(name string) (*service, error) {
 	// servEntity := gw.serviceRegistry.GetServiceByName(name)
 	// if servEntity == nil {
 	// return nil, ErrServiceNotExists

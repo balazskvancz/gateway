@@ -14,7 +14,7 @@ type Config struct {
 	IsProd   bool  `json:"isProd"`
 	SleepMin uint8 `json:"sleepMin"`
 
-	Services *[]Service `json:"services"`
+	Services []*service `json:"services"`
 }
 
 // Reads the main config for the Gateway itself.

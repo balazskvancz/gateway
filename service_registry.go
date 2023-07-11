@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -32,7 +31,7 @@ func newRegistry() *registry {
 }
 
 // addService adds the given service to the registry's tree.
-func (r *registry) addService(srvc *Service) error {
+func (r *registry) addService(srvc *service) error {
 	if r == nil {
 		return errRegistryNil
 	}
@@ -54,18 +53,40 @@ func (r *registry) addService(srvc *Service) error {
 }
 
 // findService searches the tree based on the given url.
-func (r *registry) findService(url string) *Service {
+func (r *registry) findService(url string) *service {
 	node := r.serviceTree.find(url)
 	if node == nil {
 		return nil
 	}
 
-	service, ok := node.value.(*Service)
+	service, ok := node.value.(*service)
 	if !ok {
 		return nil
 	}
 
 	return service
+}
+
+// getServiceByName searches for services by the given name.
+func (r *registry) getServiceByName(name string) *service {
+	node := r.serviceTree.getByPredicate(func(n *node) bool {
+		s, ok := n.value.(*service)
+		if !ok {
+			return false
+		}
+		return s.Name == name
+	})
+
+	if node == nil {
+		return nil
+	}
+
+	serv, ok := node.value.(*service)
+	if !ok {
+		return nil
+	}
+
+	return serv
 }
 
 // Updates the status of the services, in the registry.
@@ -76,28 +97,30 @@ func (r *registry) updateStatus() {
 		nodes := r.serviceTree.getAllLeaf()
 
 		for _, n := range nodes {
-			service, ok := n.value.(*Service)
+			service, ok := n.value.(*service)
 			if !ok {
 				fmt.Println("error with *Service casting")
 				continue
 			}
 
-			isAvailable, err := service.CheckStatus()
-
-			if err != nil && errors.Is(err, errServiceNotAvailable) {
-				service.state = StateUnknown
-				continue
+			if err := service.checkStatus(); err != nil {
+				fmt.Printf("[registry] service %s – checkStatus error: %v\n", service.Name, err)
 			}
-
-			if !isAvailable {
-				service.state = StateRefused
-				continue
-			}
-
-			service.state = StateAvailable
 		}
 
 		// Lets sleep for the given amount.
 		<-t.C
 	}
+}
+
+// setServiceAvailable changes the state of service matched by
+// given name to StateAvailable.
+func (r *registry) setServiceAvailable(name string) {
+	service := r.getServiceByName(name)
+	if service == nil {
+		// No match, no effect.
+		return
+	}
+
+	service.setState(StateAvailable)
 }
