@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -11,9 +12,7 @@ const (
 
 type registry struct {
 	healthCheckFrequency time.Duration
-	services             map[string]*Service
-
-	serviceTree *tree
+	serviceTree          *tree
 }
 
 type registryOptionFunc func(*registry)
@@ -27,93 +26,78 @@ func withHealthCheck(freq time.Duration) registryOptionFunc {
 // Creates a new registry with empty slice of services.
 func newRegistry() *registry {
 	return &registry{
-		services:             make(map[string]*Service),
 		healthCheckFrequency: defaultHealthCheckFreq,
+		serviceTree:          newTree(),
 	}
 }
 
-// Adds a new service to the registry.
+// addService adds the given service to the registry's tree.
 func (r *registry) addService(srvc *Service) error {
 	if r == nil {
 		return errRegistryNil
 	}
 
 	// If the map hasnt been initialized, we return error.
-	if r.services == nil {
-		return errServiceMapNil
+	if r.serviceTree == nil {
+		return errServiceTreeNil
 	}
 
 	if srvc == nil {
 		return errServiceNil
 	}
 
-	// Check if already registered.
-	if _, exists := r.services[srvc.Prefix]; exists {
+	if node := r.serviceTree.findLongestMatch(srvc.Prefix); node != nil {
 		return errServiceExists
 	}
 
-	r.services[srvc.Prefix] = srvc
-
-	return nil
+	return r.serviceTree.insert(srvc.Prefix, srvc)
 }
 
-func (r *registry) findServiceByPrefix(prefix string) *Service {
-	service, exists := r.services[prefix]
-	if !exists {
+// findService searches the tree based on the given url.
+func (r *registry) findService(url string) *Service {
+	node := r.serviceTree.find(url)
+	if node == nil {
+		return nil
+	}
+
+	service, ok := node.value.(*Service)
+	if !ok {
 		return nil
 	}
 
 	return service
 }
 
-// Finds the service based on url.
-func (r *registry) FindService(url string) *Service {
-	return nil
-}
-
-// getServiceByName finds and returns a service by name.
-func (r *registry) getServiceByName(name string) *Service {
-	for _, s := range r.services {
-		if s.Name == name {
-			return s
-		}
-	}
-
-	return nil
-}
-
 // Updates the status of the services, in the registry.
 func (r *registry) updateStatus() {
-	t := time.Tick(r.healthCheckFrequency)
+	t := time.NewTicker(r.healthCheckFrequency)
 
 	for {
-		for _, s := range r.services {
-			isAvailable, err := s.CheckStatus()
+		nodes := r.serviceTree.getAllLeaf()
+
+		for _, n := range nodes {
+			service, ok := n.value.(*Service)
+			if !ok {
+				fmt.Println("error with *Service casting")
+				continue
+			}
+
+			isAvailable, err := service.CheckStatus()
 
 			if err != nil && errors.Is(err, errServiceNotAvailable) {
-				r.setState(s.Prefix, StateUnknown)
+				service.state = StateUnknown
 				continue
 			}
 
 			if !isAvailable {
-				r.setState(s.Prefix, StateRefused)
+				service.state = StateRefused
 				continue
 			}
 
-			r.setState(s.Prefix, StateAvailable)
+			service.state = StateAvailable
 		}
 
 		// Lets sleep for the given amount.
-		<-t
+		<-t.C
 	}
-}
-
-func (r *registry) setState(serv string, state serviceState) {
-	_, exits := r.services[serv]
-
-	if !exits {
-		return
-	}
-
-	// r.services[serv] =
 }

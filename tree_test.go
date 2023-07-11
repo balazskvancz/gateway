@@ -541,3 +541,169 @@ func TestCheckPathParams(t *testing.T) {
 		})
 	}
 }
+
+func TestFindLongestMatch(t *testing.T) {
+	type testRoute struct {
+		name string
+	}
+
+	type testCase struct {
+		name         string
+		getTree      getTreeFn
+		input        string
+		expectedName string
+	}
+
+	tt := []testCase{
+		{
+			name:  "empty tree, no find",
+			input: "/api/products/list-all",
+			getTree: func(t *testing.T) *tree {
+				return newTree()
+			},
+			expectedName: "",
+		},
+		{
+			name:  "not empty tree, but not matching leaf",
+			input: "/api/products/list-all",
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
+
+				tree.insert("/api/users", &testRoute{
+					name: "users",
+				})
+
+				tree.insert("/api/categories", &testRoute{
+					name: "categories",
+				})
+
+				return tree
+			},
+			expectedName: "",
+		},
+		{
+			name:  "not empty tree, and matching leaf",
+			input: "/api/products/list-all",
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
+
+				tree.insert("/api/users", &testRoute{
+					name: "users",
+				})
+
+				tree.insert("/api/categories", &testRoute{
+					name: "categories",
+				})
+
+				tree.insert("/api/products", &testRoute{
+					name: "products",
+				})
+
+				return tree
+			},
+			expectedName: "products",
+		},
+		{
+			name:  "not empty tree, and matching leaf with similiar services",
+			input: "/api/professions/list-all",
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
+
+				tree.insert("/api/professions", &testRoute{
+					name: "professions",
+				})
+
+				tree.insert("/api/products", &testRoute{
+					name: "products",
+				})
+
+				return tree
+			},
+			expectedName: "professions",
+		},
+		{
+			name:  "not empty tree, no matching leaf nearly good key",
+			input: "/api/profession/list-all",
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
+
+				tree.insert("/api/professions", &testRoute{
+					name: "professions",
+				})
+
+				tree.insert("/api/products", &testRoute{
+					name: "products",
+				})
+
+				return tree
+			},
+			expectedName: "",
+		},
+		{
+			name:  "not empty tree, no matching leaf nearly good key (not leaf)",
+			input: "/api/products/list-all",
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
+
+				tree.insert("/api/products/outer", &testRoute{
+					name: "outer",
+				})
+
+				tree.insert("/api/products/inner", &testRoute{
+					name: "inner",
+				})
+
+				return tree
+			},
+			expectedName: "",
+		},
+		{
+			name:  "not empty tree, matching similiar prefixes",
+			input: "/api/products/list-all",
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
+
+				tree.insert("/api/products", &testRoute{
+					name: "products",
+				})
+
+				tree.insert("/api/products/outer", &testRoute{
+					name: "outer",
+				})
+
+				tree.insert("/api/products/inner", &testRoute{
+					name: "inner",
+				})
+
+				return tree
+			},
+			expectedName: "products",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := tc.getTree(t)
+
+			match := tree.findLongestMatch(tc.input)
+
+			if tc.expectedName == "" && match != nil {
+				t.Error("expected not to find any node, but found")
+			}
+
+			if tc.expectedName != "" {
+				if match == nil {
+					t.Error("expected to find node, but found none")
+					return
+				}
+
+				c := match.value.(*testRoute)
+
+				if tc.expectedName != c.name {
+					t.Errorf("expected value: %s; got %s\n", tc.expectedName, c.name)
+				}
+			}
+
+		})
+	}
+}

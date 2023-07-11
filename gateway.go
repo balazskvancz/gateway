@@ -100,8 +100,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		ctx:         defaultContext,
 		methodTrees: make(map[string]*tree),
 
-		// For now, the newRegistry factory is bad.
-		// serviceRegisty: NewRegistry(),
+		serviceRegisty: newRegistry(),
 
 		contextPool: sync.Pool{
 			New: func() interface{} {
@@ -169,7 +168,7 @@ func (gw *Gateway) Start() {
 	}
 
 	// Updating the status of each service.
-	// go gw.serviceRegistry.UpdateStatus()
+	go gw.serviceRegisty.updateStatus()
 
 	// Creating a channel, that listens for quiting.
 	sigCh := make(chan os.Signal, 1)
@@ -322,7 +321,11 @@ func (gw *Gateway) serve(ctx *Context) {
 	}
 
 	// After try to forward it to specific service.
-	// TODO: service lookup.
+	s := gw.serviceRegisty.findService(ctx.GetUrlWithoutQueryParams())
+
+	if s != nil {
+		s.Handle(ctx)
+	}
 
 	// In any other case, we simply return 404.
 	ctx.SendNotFound()

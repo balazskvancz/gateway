@@ -268,6 +268,7 @@ func longestCommonPrefix(str1, str2 string) int {
 	return counter
 }
 
+// createNewNode is a factory for creating new nodes.
 func createNewNode(key string, value any, children ...*node) *node {
 	n := &node{
 		key:      key,
@@ -282,6 +283,8 @@ func createNewNode(key string, value any, children ...*node) *node {
 	return n
 }
 
+// find starts the search for given key and returns a pointer to
+// the found node. If there is no match, it returns nil.
 func (t *tree) find(key string) *node {
 	if err := checkTree(t); err != nil {
 		return nil
@@ -294,6 +297,9 @@ func (t *tree) find(key string) *node {
 	return findRec(t.root, key, false)
 }
 
+// findRec is the main logic for conducting the search in a recursive manner.
+// It looks for match on the given node's level, and calls itself recursively
+// amongs its children, until the search is over.
 func findRec(n *node, key string, isWildcard bool) *node {
 	if n == nil {
 		return nil
@@ -433,4 +439,71 @@ func getOffsets(storedKey, searchKey string, isWildcard bool) (int, int, bool) {
 	}
 
 	return i, j, isWildcard
+}
+
+// findLongestMatch is similar to find but it doesnt include any wildcard params at all.
+// And it is not looking for perfect match, rather it finds the longest „route” based on the given string.
+// Used for storing services based on their prefixes.
+func (t *tree) findLongestMatch(key string) *node {
+	if err := checkTree(t); err != nil {
+		return nil
+	}
+
+	if key == "" {
+		return nil
+	}
+
+	return findLongestMatchRec(t.root, key)
+}
+
+// findLongestMatchRec
+func findLongestMatchRec(n *node, key string) *node {
+	if n == nil {
+		return nil
+	}
+
+	lcp := longestCommonPrefix(n.key, key)
+
+	if lcp == 0 {
+		return nil
+	}
+
+	if lcp != len(n.key) {
+		return nil
+	}
+
+	for _, ch := range n.children {
+		if node := findLongestMatchRec(ch, key[lcp:]); node != nil {
+			return node
+		}
+	}
+
+	if !n.isLeaf() {
+		return nil
+	}
+
+	return n
+}
+
+// getAllLeaf returns all of leaf nodes.
+func (t *tree) getAllLeaf() []*node {
+	return getAllLeafRec(t.root)
+}
+
+func getAllLeafRec(n *node) []*node {
+	arr := make([]*node, 0)
+
+	for _, c := range n.children {
+		chArr := getAllLeafRec(c)
+
+		if len(chArr) > 0 {
+			arr = append(arr, chArr...)
+		}
+	}
+
+	if n.isLeaf() {
+		arr = append(arr, n)
+	}
+
+	return arr
 }

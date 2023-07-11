@@ -22,11 +22,11 @@ var (
 	errServicesSamePrefixLength = errors.New("service prefix must be same length")
 	errServicesSliceIsEmpty     = errors.New("services slice is empty")
 
-	errNoService     = errors.New("zero length of services")
-	errRegistryNil   = errors.New("registry is nil")
-	errServiceExists = errors.New("service already registered")
-	errServiceMapNil = errors.New("service registry is nil")
-	errServiceNil    = errors.New("service is nil")
+	errNoService      = errors.New("zero length of services")
+	errRegistryNil    = errors.New("[registry]: registry is nil")
+	errServiceExists  = errors.New("[registry]: service already registered")
+	errServiceTreeNil = errors.New("[registry]: service tree is <nil>")
+	errServiceNil     = errors.New("[registry]: service is nil")
 
 	ErrServiceNotExists = errors.New("service not exists")
 )
