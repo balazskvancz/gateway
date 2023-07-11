@@ -45,7 +45,7 @@ type Gateway struct {
 	methodTrees map[string]*tree
 
 	//
-	serviceRegisty *Registry
+	serviceRegisty *registry
 
 	//
 	contextPool sync.Pool
@@ -70,8 +70,13 @@ type Gateway struct {
 var _ (http.Handler) = (*Gateway)(nil)
 
 func defaultNotFoundHandler(ctx *Context) {
-	// w.WriteHeader(http.StatusNotFound)
-	// w.Write([]byte("404 – not found"))
+	ctx.SendNotFound()
+}
+
+func defaultPanicHandler(ctx *Context, rec interface{}) {
+	// TODO: logging
+	fmt.Println(rec)
+	ctx.SendInternalServerError()
 }
 
 func getContextIdChannel() contextIdChan {
@@ -105,6 +110,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		},
 
 		notFoundHandler: defaultNotFoundHandler,
+		panicHandler:    defaultPanicHandler,
 	}
 
 	for _, o := range opts {
@@ -244,7 +250,7 @@ func (gw *Gateway) getOrCreateMethodTree(method string) *tree {
 	t := newTree()
 	gw.methodTrees[method] = t
 
-	return t
+	return gw.methodTrees[method]
 }
 
 func (gw *Gateway) addRoute(method, url string, handler HandlerFunc) *Route {
@@ -284,7 +290,17 @@ func (gw *Gateway) findNamedRoute(ctx *Context) *Route {
 	return route
 }
 
+// serve serves the context by its HTTP method and URL.
 func (gw *Gateway) serve(ctx *Context) {
+	// In case of any panics, we catch it and log it.
+	defer func() {
+		prec := recover()
+
+		if prec != nil && gw.panicHandler != nil {
+			gw.panicHandler(ctx, prec)
+		}
+	}()
+
 	// In case of HTTP Options.
 	if ctx.GetRequestMethod() == http.MethodOptions {
 		optHandler := gw.optionsHandler

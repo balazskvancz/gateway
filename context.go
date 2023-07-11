@@ -16,20 +16,21 @@ const (
 	ctHeader = "Content-Type"
 
 	JsonContentType     = "application/json"
+	JsonContentTypeUTF8 = JsonContentType + "; charset=UTF-8"
 	TextHtmlContentType = "text/html"
 	XmlContentType      = "application/xml"
 
 	maxParams uint8 = 8
 )
 
+var (
+	defaultNotFoundBody []byte = []byte("404 – Not Found")
+)
+
 type pathParam struct {
 	key   string
 	value string
 }
-
-var (
-	contextId uint64 = 0
-)
 
 type contextIdChan <-chan uint64
 
@@ -39,8 +40,6 @@ type Context struct {
 
 	params []pathParam
 
-	nextCalled bool
-
 	contextId     uint64
 	contextIdChan contextIdChan
 }
@@ -48,7 +47,6 @@ type Context struct {
 // newContext creates and returns a new context.
 func newContext(ciChan contextIdChan) *Context {
 	return &Context{
-		contextId:     contextId,
 		contextIdChan: ciChan,
 		params:        make([]pathParam, maxParams),
 	}
@@ -182,8 +180,6 @@ func (ctx *Context) GetParam(key string) string {
 
 // Writes the response body, with given byte[] and Content-type.
 func (ctx *Context) SendRaw(b []byte, statusCode int, header http.Header) {
-	ctx.nextCalled = false
-
 	writer := ctx.writer
 
 	for k, v := range header {
@@ -197,15 +193,8 @@ func (ctx *Context) SendRaw(b []byte, statusCode int, header http.Header) {
 			}
 		}
 
-		// if strings.ToLower(k) == "content-type" {
-		// cType = value
-		// }
-
 		writer.Header().Add(k, strings.Join(v, ";"))
 	}
-
-	// action := strconv.Itoa(statusCode) + " " + cType
-	// go ctx.logger.writeToLog(ctx.contextId, stateEnded, action)
 
 	writer.WriteHeader(statusCode)
 	writer.Write(b)
@@ -248,20 +237,22 @@ func (ctx *Context) SendXML(data interface{}) {
 
 // Sending a HTTP 404 error.
 func (ctx *Context) SendNotFound() {
-	ctx.nextCalled = false
 	ctx.writer.WriteHeader(http.StatusNotFound)
+	ctx.writer.Write(defaultNotFoundBody)
+}
+
+func (ctx *Context) SendInternalServerError() {
+	ctx.writer.WriteHeader(http.StatusInternalServerError)
 }
 
 // Sending basic HTTP 200.
 func (ctx *Context) SendOk() {
-	ctx.nextCalled = false
 	ctx.SendRaw(nil, http.StatusOK, http.Header{})
 }
 
 // Sending HTTP 401 error, if the request
 // doesnt have the required permissions.
 func (ctx *Context) SendUnauthorized() {
-	ctx.nextCalled = false
 	ctx.SendRaw(nil, http.StatusUnauthorized, http.Header{})
 }
 
@@ -269,13 +260,11 @@ func (ctx *Context) SendUnauthorized() {
 // given service hasnt responded or its state
 // is also unavailable.
 func (ctx *Context) SendUnavailable() {
-	ctx.nextCalled = false
 	ctx.SendRaw(nil, http.StatusServiceUnavailable, http.Header{})
 }
 
 // Sends a text error with HTTP 400 code in header.
 func (ctx *Context) SendError(msg ...string) {
-	ctx.nextCalled = false
 	b := []byte{}
 
 	if len(msg) > 0 {

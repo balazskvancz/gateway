@@ -130,7 +130,7 @@ func TestSendJson(t *testing.T) {
 				t.Errorf("expected body: %s; got body: %s\n", tc.expectedBody, recorder.Body.String())
 			}
 
-			gotContentType := recorder.HeaderMap.Get("Content-Type")
+			gotContentType := recorder.Header().Get("Content-Type")
 
 			if gotContentType != JsonContentType {
 				t.Errorf("expected content-type: %s; got: %s\n", JsonContentType, gotContentType)

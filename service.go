@@ -10,24 +10,33 @@ import (
 	"github.com/balazskvancz/gateway/pkg/communicator"
 )
 
+type serviceState uint8
+
 const (
+	StateRegistered serviceState = iota
+	StateUnknown
+	StateRefused
+	StateAvailable
+
 	statusPath = "/api/status/health-check"
 	timeOutSec = 10
 
 	timeOutDur = timeOutSec * time.Second
 )
 
-type Service struct {
-	Protocol     string `json:"protocol"`
-	Name         string `json:"name"`
-	Host         string `json:"host"`
-	Port         string `json:"port"`
-	Prefix       string `json:"prefix"`
-	CContentType string `json:"ctype"` // Content-type of communication.
+type ServiceConfig struct {
+	Protocol string `json:"protocol"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	Prefix   string `json:"prefix"`
+}
 
+type Service struct {
+	*ServiceConfig
 	client *communicator.HttpClient
 
-	IsAvailable bool
+	state serviceState
 }
 
 type services = *[]Service
@@ -73,7 +82,7 @@ func ValidateServices(srvcs services) error {
 
 // A handler for each service.
 func (s *Service) Handle(ctx *Context) {
-	if !s.IsAvailable {
+	if s.state != StateAvailable {
 		ctx.SendUnavailable()
 
 		return
@@ -87,7 +96,7 @@ func (s *Service) Handle(ctx *Context) {
 
 // Sending @GET request to the service.
 func (s *Service) Get(url string, header ...http.Header) (*http.Response, error) {
-	if !s.IsAvailable {
+	if s.state != StateAvailable {
 		return nil, errServiceNotAvailable
 	}
 
@@ -106,7 +115,7 @@ func (s *Service) Get(url string, header ...http.Header) (*http.Response, error)
 
 // Sending @POST request to the service.
 func (s *Service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
-	if !s.IsAvailable {
+	if s.state != StateAvailable {
 		return nil, errServiceNotAvailable
 	}
 
@@ -128,26 +137,25 @@ func (s *Service) CheckStatus() (bool, error) {
 	defer cancel()
 
 	url := s.GetAddress() + statusPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		s.IsAvailable = false
+		s.state = StateUnknown
 		return false, err
 	}
 
 	res, err := s.client.Do(req)
-
 	if err != nil {
-		s.IsAvailable = false
+		s.state = StateRefused
 		return false, err
 	}
 
 	if res.StatusCode != http.StatusOK {
-		s.IsAvailable = false
+		s.state = StateRefused
 		return false, errServiceNotAvailable
 	}
 
-	s.IsAvailable = true
+	s.state = StateAvailable
 	return true, nil
 }
 

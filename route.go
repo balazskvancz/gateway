@@ -49,7 +49,9 @@ func (route *Route) registerMiddleware(mw MiddlewareFunc) *Route {
 	return route
 }
 
-func (route *Route) registerMiddlewares(mws ...MiddlewareFunc) *Route {
+// RegisterMiddlewares registers all the given middlewares one-by-one,
+// then returns the route pointer.
+func (route *Route) RegisterMiddlewares(mws ...MiddlewareFunc) *Route {
 	if len(mws) == 0 {
 		return route
 	}

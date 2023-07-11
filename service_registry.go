@@ -2,101 +2,38 @@ package gateway
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 	"time"
-
-	"github.com/balazskvancz/gateway/pkg/utils"
-)
-
-var (
-	errNoService     = errors.New("zero length of services")
-	errRegistryNil   = errors.New("registry is nil")
-	errServiceExists = errors.New("service already registered")
-	errServiceMapNil = errors.New("service registry is nil")
-	errServiceNil    = errors.New("service is nil")
-)
-
-var (
-	ErrServiceNotExists = errors.New("service not exists")
 )
 
 const (
-	StateRegistered = iota
-	StateUnknown
-	StateRefused
-	StateAvailable
+	defaultHealthCheckFreq = time.Minute * 2
 )
 
-type serviceEntity struct {
-	service *Service
+type registry struct {
+	healthCheckFrequency time.Duration
+	services             map[string]*Service
 
-	state uint8
+	serviceTree *tree
 }
 
-type Registry struct {
-	services map[string]*serviceEntity
-	sleepMin uint8
+type registryOptionFunc func(*registry)
 
-	servicePrefixL int8
+func withHealthCheck(freq time.Duration) registryOptionFunc {
+	return func(r *registry) {
+		r.healthCheckFrequency = freq
+	}
 }
 
 // Creates a new registry with empty slice of services.
-func NewRegistry(services *[]Service, sleepMin uint8) (*Registry, error) {
-	if services == nil {
-		return nil, errServiceMapNil
+func newRegistry() *registry {
+	return &registry{
+		services:             make(map[string]*Service),
+		healthCheckFrequency: defaultHealthCheckFreq,
 	}
-
-	if len(*services) == 0 {
-		return nil, errNoService
-	}
-
-	servicesMap := make(map[string]*serviceEntity)
-
-	for _, serv := range *services {
-		if _, exists := servicesMap[serv.Prefix]; exists {
-			fmt.Printf("Duplicate service ([%s] => %s). Ignoring.\n", serv.Name, serv.Prefix)
-
-			continue
-		}
-
-		serv := &Service{
-			Protocol:     serv.Protocol,
-			Name:         serv.Name,
-			Host:         serv.Host,
-			Port:         serv.Port,
-			Prefix:       serv.Prefix,
-			CContentType: serv.CContentType,
-		}
-
-		// Create the associating http client.
-		serv.CreateClient()
-
-		servicesMap[serv.Prefix] = &serviceEntity{
-			service: serv,
-			state:   StateRegistered, /*StateAvailable */
-		}
-	}
-
-	var length int8 = 0
-
-	for key := range servicesMap {
-		splitted := utils.GetUrlParts(key)
-
-		length = int8(len(splitted))
-
-		break
-	}
-
-	return &Registry{
-		services:       servicesMap,
-		servicePrefixL: length,
-		sleepMin:       sleepMin,
-	}, nil
 }
 
 // Adds a new service to the registry.
-func (r *Registry) AddService(srvc *Service) error {
+func (r *registry) addService(srvc *Service) error {
 	if r == nil {
 		return errRegistryNil
 	}
@@ -111,66 +48,34 @@ func (r *Registry) AddService(srvc *Service) error {
 	}
 
 	// Check if already registered.
-	_, exists := r.services[srvc.Prefix]
-
-	if exists {
+	if _, exists := r.services[srvc.Prefix]; exists {
 		return errServiceExists
 	}
 
-	r.services[srvc.Prefix] = &serviceEntity{
-		service: srvc,
-		state:   StateRegistered,
-	}
+	r.services[srvc.Prefix] = srvc
 
 	return nil
 }
 
-func (r *Registry) findService(prefix string) *serviceEntity {
-	sEntity, exists := r.services[prefix]
-
+func (r *registry) findServiceByPrefix(prefix string) *Service {
+	service, exists := r.services[prefix]
 	if !exists {
 		return nil
 	}
 
-	return sEntity
+	return service
 }
 
 // Finds the service based on url.
-func (r *Registry) FindService(url string) *serviceEntity {
-	// Simple checking for not calling anything on a nil pointer.
-	if r == nil {
-		return nil
-	}
-
-	if r.services == nil {
-		return nil
-	}
-
-	if len(r.services) == 0 {
-		return nil
-	}
-
-	// If the given url doesnt start with "/", put it there.
-	if !strings.HasPrefix(url, "/") {
-		url = "/" + url
-	}
-
-	splitted := utils.GetUrlParts(url)
-	if int8(len(splitted)) < r.servicePrefixL {
-		return nil
-	}
-
-	// Creates a prefix which is suitable	for the stored services.
-	sPrefix := "/" + strings.Join(splitted[:r.servicePrefixL], "/")
-
-	return r.findService(sPrefix)
+func (r *registry) FindService(url string) *Service {
+	return nil
 }
 
-// Finds and returns a service by name.
-func (r *Registry) GetServiceByName(name string) *serviceEntity {
-	for _, v := range r.services {
-		if v.service.Name == name {
-			return v
+// getServiceByName finds and returns a service by name.
+func (r *registry) getServiceByName(name string) *Service {
+	for _, s := range r.services {
+		if s.Name == name {
+			return s
 		}
 	}
 
@@ -178,55 +83,37 @@ func (r *Registry) GetServiceByName(name string) *serviceEntity {
 }
 
 // Updates the status of the services, in the registry.
-func (r *Registry) UpdateStatus() {
+func (r *registry) updateStatus() {
+	t := time.Tick(r.healthCheckFrequency)
+
 	for {
 		for _, s := range r.services {
-			isAvailable, err := s.GetService().CheckStatus()
+			isAvailable, err := s.CheckStatus()
 
 			if err != nil && errors.Is(err, errServiceNotAvailable) {
-				r.setState(s.GetService().Prefix, StateUnknown)
+				r.setState(s.Prefix, StateUnknown)
 				continue
 			}
 
 			if !isAvailable {
-				r.setState(s.GetService().Prefix, StateRefused)
+				r.setState(s.Prefix, StateRefused)
 				continue
 			}
 
-			r.setState(s.GetService().Prefix, StateAvailable)
+			r.setState(s.Prefix, StateAvailable)
 		}
 
-		sleepTime := time.Duration(r.sleepMin) * time.Minute
-		time.Sleep(sleepTime)
+		// Lets sleep for the given amount.
+		<-t
 	}
 }
 
-func (r *Registry) setState(serv string, state uint8) {
-	service, exits := r.services[serv]
+func (r *registry) setState(serv string, state serviceState) {
+	_, exits := r.services[serv]
 
 	if !exits {
 		return
 	}
 
-	r.services[serv] = &serviceEntity{
-		service: service.service,
-		state:   state,
-	}
-}
-
-// ------------------
-
-// Returns the service itself from the entity.
-func (sE *serviceEntity) GetService() *Service {
-	return sE.service
-}
-
-// Returns whether the service is available inside the entity.
-func (sE *serviceEntity) IsAvailable() bool {
-	return sE.state == StateAvailable
-}
-
-// Returns the state of service inside the entity.
-func (sE *serviceEntity) GetState() uint8 {
-	return sE.state
+	// r.services[serv] =
 }

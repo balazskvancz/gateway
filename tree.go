@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 )
@@ -434,38 +433,4 @@ func getOffsets(storedKey, searchKey string, isWildcard bool) (int, int, bool) {
 	}
 
 	return i, j, isWildcard
-}
-
-// Some helpers in case of troubleshooting.
-func (t *tree) displayTree() {
-	if t == nil {
-		fmt.Println("<nil> tree")
-		return
-	}
-
-	if t.root == nil {
-		fmt.Println("empty tree")
-		return
-	}
-
-	traverseDFS(t.root, 1)
-}
-
-func traverseDFS(n *node, lvl int) {
-	if n == nil {
-		return
-	}
-
-	nodeType := func() string {
-		if n.isLeaf() {
-			return "leaf"
-		}
-		return "node"
-	}
-
-	fmt.Printf("[%d] => %s (%s)\n", lvl, n.key, nodeType())
-
-	for _, c := range n.children {
-		traverseDFS(c, lvl+1)
-	}
 }
