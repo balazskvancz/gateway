@@ -23,11 +23,17 @@ func withHealthCheck(freq time.Duration) registryOptionFunc {
 }
 
 // Creates a new registry with empty slice of services.
-func newRegistry() *registry {
-	return &registry{
+func newRegistry(opts ...registryOptionFunc) *registry {
+	r := &registry{
 		healthCheckFrequency: defaultHealthCheckFreq,
 		serviceTree:          newTree(),
 	}
+
+	for _, o := range opts {
+		o(r)
+	}
+
+	return r
 }
 
 // addService adds the given service to the registry's tree.

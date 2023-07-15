@@ -28,6 +28,7 @@ func withHostName(hname string) httpClientOptionFunc {
 	}
 }
 
+// newHttpClient returns a new client.
 func newHttpClient(opts ...httpClientOptionFunc) *httpClient {
 	hc := &httpClient{
 		Client: http.DefaultClient,

@@ -44,15 +44,14 @@ type Gateway struct {
 	// method itself.
 	methodTrees map[string]*tree
 
-	//
+	// The registy which stores all the registered services.
 	serviceRegisty *registry
 
-	//
+	// A pool for Context.
 	contextPool sync.Pool
 
-	mockTree *tree
-
-	middlewares map[string]MiddlewareFunc
+	// mockTree *tree
+	// middlewares map[string]MiddlewareFunc
 
 	// Custom handler for HTTP 404. Everytime a specific
 	// route is not found or a service returned 404 it gets called.
@@ -100,7 +99,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		ctx:         defaultContext,
 		methodTrees: make(map[string]*tree),
 
-		serviceRegisty: newRegistry(),
+		serviceRegisty: newRegistry(withHealthCheck(defaultHealthCheckFreq)),
 
 		contextPool: sync.Pool{
 			New: func() interface{} {

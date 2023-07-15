@@ -29,4 +29,7 @@ var (
 	errServiceNil     = errors.New("[registry]: service is nil")
 
 	ErrServiceNotExists = errors.New("service not exists")
+
+	errNotJsonContentType = errors.New("[context]: incoming body is not application/json")
+	errDataMustBePtr      = errors.New("[context]: data must be a pointer")
 )

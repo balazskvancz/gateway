@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 
 	"github.com/balazskvancz/gateway/pkg/utils"
@@ -21,10 +22,6 @@ const (
 	XmlContentType      = "application/xml"
 
 	maxParams uint8 = 8
-)
-
-var (
-	defaultNotFoundBody []byte = []byte("404 – Not Found")
 )
 
 type pathParam struct {
@@ -52,7 +49,7 @@ func newContext(ciChan contextIdChan) *Context {
 	}
 }
 
-// reset
+// reset resets the context entity to default state.
 func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
 	ctx.request = r
 	ctx.writer = w
@@ -62,19 +59,19 @@ func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
 	ctx.contextId = <-ctx.contextIdChan
 }
 
-// empty
+// empty makes the http.Request and http.ResponseWrite <nil>.
+// Should be called before putting the Context back to the pool.
 func (c *Context) empty() {
 	c.request = nil
 	c.writer = nil
 }
 
-// Request.
-// Returns the attached request.
+// GetRequest returns the attached http.Request.
 func (ctx *Context) GetRequest() *http.Request {
 	return ctx.request
 }
 
-// Returns the method of incoming request.
+// GetRequestMethod returns the method of incoming request.
 func (ctx *Context) GetRequestMethod() string {
 	if ctx == nil {
 		return ""
@@ -82,7 +79,7 @@ func (ctx *Context) GetRequestMethod() string {
 	return ctx.request.Method
 }
 
-// Returns the full URL with all queryParams included.
+// GetFullUrl returns the full URL with all queryParams included.
 func (ctx *Context) GetFullUrl() string {
 	if ctx.request == nil {
 		return ""
@@ -90,34 +87,34 @@ func (ctx *Context) GetFullUrl() string {
 	return ctx.request.RequestURI
 }
 
-// Return the array, of url parts.
-// /foo/bar/baz => ["foo", "bar", "baz"]
+// GetUrlParts returns the url as a slice of strings
 func (ctx *Context) GetUrlParts() []string {
 	return utils.GetUrlParts(ctx.GetFullUrl())
 }
 
-// Returns the url, without query params, it there is any.
+// GetUrlWithoutQueryParams returns the url
+// without query params, it there is any.
 func (ctx *Context) GetUrlWithoutQueryParams() string {
 	return removeQueryParts(ctx.GetFullUrl())
 }
 
+// GetQueryParams returns the query params of the url.
 func (ctx *Context) GetQueryParams() url.Values {
 	return ctx.request.URL.Query()
 }
 
-// Returns one params value based on its key.
+// GetQueryParam returns the queryParam identified by the given key.
 func (ctx *Context) GetQueryParam(key string) string {
 	query := ctx.GetQueryParams()
 
 	return query.Get(key)
 }
 
-// Get the body in bytes.
+// GetRawBody reads and returns the body of the request.
 func (ctx *Context) GetRawBody() ([]byte, error) {
 	req := ctx.request
 
 	b, err := io.ReadAll(req.Body)
-
 	if err != nil {
 		return nil, err
 	}
@@ -126,32 +123,35 @@ func (ctx *Context) GetRawBody() ([]byte, error) {
 	return b, nil
 }
 
-// Reads the request body, tries to parse into given object.
-// It must be a pointer, otherwise wont work.
-// Also, it returns error, if somethting went bad.
-func (ctx *Context) ReadJsonBody(data interface{}) error {
-	b, err := ctx.GetRawBody()
-
-	if err != nil {
-		return err
+// DecodeJsonBody decodes the body into the given paramer.
+// The given parameter must be a pointer type, otwherwise
+// it returns an error.
+func (ctx *Context) DecodeJsonBody(data interface{}) error {
+	if ct := ctx.GetContentType(); !strings.Contains(ct, JsonContentType) {
+		return errNotJsonContentType
 	}
 
-	return json.Unmarshal(b, data)
+	if reflect.ValueOf(data).Kind() != reflect.Ptr {
+		return errDataMustBePtr
+	}
+	body := ctx.GetRequest().Body
+	defer body.Close()
+	return json.NewDecoder(body).Decode(data)
 }
 
-// Returns all the headers from the request.
+// GetRequestHeaders returns all the headers from the request.
 func (ctx *Context) GetRequestHeaders() http.Header {
 	return ctx.request.Header
 }
 
-// Return one specific headers value, with given key.
+// GetRequestHeader return one specific headers value, with given key.
 func (ctx *Context) GetRequestHeader(key string) string {
 	header := ctx.GetRequestHeaders()
 
 	return header.Get(key)
 }
 
-// Returns te content-type of the original request.
+// GetContentType returns te content-type of the original request.
 func (ctx *Context) GetContentType() string {
 	return ctx.GetRequestHeader(ctHeader)
 }
@@ -160,12 +160,12 @@ func (ctx *Context) GetContentType() string {
 // | ROUTE PARAMS |
 // ----------------
 
-// Sets the params to the context.
+// setParams binds the params to the context.
 func (ctx *Context) setParams(params []pathParam) {
 	ctx.params = params
 }
 
-// Get params value by certain key.
+// GetParam returns the value of the param identified by the given key.
 func (ctx *Context) GetParam(key string) string {
 	for _, entry := range ctx.params {
 		if entry.key == key {
@@ -220,35 +220,38 @@ func (ctx *Context) SendXML(data interface{}) {
 	ctx.SendRaw(b, http.StatusOK, createContentTypeHeader(XmlContentType))
 }
 
-// Sending a HTTP 404 error.
+// SendNotFound sends a HTTP 404 error.
 func (ctx *Context) SendNotFound() {
-	ctx.writer.WriteHeader(http.StatusNotFound)
-	ctx.writer.Write(defaultNotFoundBody)
+	ctx.SendHttpError(http.StatusNotFound)
 }
 
+// SendInternalServerError send a HTTP 500 error.
 func (ctx *Context) SendInternalServerError() {
-	ctx.writer.WriteHeader(http.StatusInternalServerError)
+	ctx.SendHttpError(http.StatusInternalServerError)
 }
 
-// Sending basic HTTP 200.
+// SendOk send a s basic HTTP 200 response.
 func (ctx *Context) SendOk() {
 	ctx.SendRaw(nil, http.StatusOK, http.Header{})
 }
 
-// Sending HTTP 401 error, if the request
-// doesnt have the required permissions.
+// SendUnauthorized send a HTTP 401 error.
 func (ctx *Context) SendUnauthorized() {
-	ctx.SendRaw(nil, http.StatusUnauthorized, http.Header{})
+	ctx.SendHttpError(http.StatusUnauthorized)
 }
 
-// Sends `service unavailable` error, if the
-// given service hasnt responded or its state
-// is also unavailable.
+// SendUnavailable send a HTTP 503 error.
 func (ctx *Context) SendUnavailable() {
-	ctx.SendRaw(nil, http.StatusServiceUnavailable, http.Header{})
+	ctx.SendHttpError(http.StatusServiceUnavailable)
 }
 
-// Sends a text error with HTTP 400 code in header.
+// SendHttpError send HTTP error with the given code.
+// It also write the statusText inside the body, based on the code.
+func (ctx *Context) SendHttpError(code int) {
+	http.Error(ctx.writer, http.StatusText(code), code)
+}
+
+// SendError sends a text error with HTTP 400 code in header.
 func (ctx *Context) SendError(msg ...string) {
 	b := []byte{}
 
@@ -259,6 +262,7 @@ func (ctx *Context) SendError(msg ...string) {
 	ctx.SendRaw(b, http.StatusBadRequest, createContentTypeHeader(TextHtmlContentType))
 }
 
+// Pipe writes the given repsonse's body, statusCode and headers to the Context's response.
 func (ctx *Context) Pipe(res *http.Response) {
 	// We could use TeeReader if we want to know
 	// what are we writing to the request.
