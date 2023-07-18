@@ -64,17 +64,18 @@ func (route *Route) RegisterMiddlewares(mws ...MiddlewareFunc) *Route {
 	return route
 }
 
+func (route *Route) getChain() HandlerFunc {
+	if route.middlewareEnabled {
+		return route.chain[0]
+	}
+	return route.getHandler()
+}
+
 // run executes a route's middleware chain. If middlewares are disabled on
 // the specific route, it will only execute the handler itself.
 func (route *Route) run(ctx *Context) {
-	ha := func() HandlerFunc {
-		if route.middlewareEnabled {
-			return route.chain[0]
-		}
-		return route.getHandler()
-	}()
-
-	ha(ctx)
+	chain := route.getChain()
+	chain(ctx)
 }
 
 // getHandler returns the actual handler, which is at the end of the chain.

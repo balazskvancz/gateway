@@ -51,7 +51,12 @@ type Gateway struct {
 	contextPool sync.Pool
 
 	// mockTree *tree
-	// middlewares map[string]MiddlewareFunc
+
+	// The registry for all the globally registered middlwares.
+	// We store two different types of middlewares.
+	// There is one for before all execution and one
+	// for after all execution order.
+	mwRegistry middlewareRegistry
 
 	// Custom handler for HTTP 404. Everytime a specific
 	// route is not found or a service returned 404 it gets called.
@@ -62,7 +67,6 @@ type Gateway struct {
 	optionsHandler HandlerFunc
 
 	// Custom handler function for panics.
-	// It
 	panicHandler PanicHandlerFunc
 }
 
@@ -92,7 +96,8 @@ func getContextIdChannel() contextIdChan {
 	return ch
 }
 
-// Returns a new instance of the gateway.
+// New returns a new instance of the gateway
+// decorated with the given opts.
 func New(opts ...GatewayOptionFunc) *Gateway {
 	gw := &Gateway{
 		address:     defaultAddress,
@@ -106,6 +111,8 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 				return newContext(getContextIdChannel())
 			},
 		},
+
+		mwRegistry: *newMiddlewareRegistry(),
 
 		notFoundHandler: defaultNotFoundHandler,
 		panicHandler:    defaultPanicHandler,
@@ -186,20 +193,14 @@ func (gw *Gateway) Start() {
 	fmt.Println("[GATEWAY]: the server stopped.")
 }
 
-// Gets service by its name. Returns error if, there is
-// no service by the given name. Also returns error
-// if the certain service is not available the that time.
+// GetService searches for a service by its name.
+// Returns error if, there is no service by the given name.
 func (gw *Gateway) GetService(name string) (*service, error) {
-	// servEntity := gw.serviceRegistry.GetServiceByName(name)
-	// if servEntity == nil {
-	// return nil, ErrServiceNotExists
-	// }
-	// srvc := servEntity.GetService()
-	// if !srvc.IsAvailable {
-	// return nil, errServiceNotAvailable
-	// }
-	// return srvc, nil
-	return nil, nil
+	service := gw.serviceRegisty.getServiceByName(name)
+	if service == nil {
+		return nil, ErrServiceNotExists
+	}
+	return service, nil
 }
 
 // Listener for mocks.
@@ -213,29 +214,38 @@ func (gw *Gateway) ListenForMocks(mocks *[]mock.MockCall) {
 	//u gw.mux.SetMocks(mocks)
 }
 
-// Register a custom route with method @GET.
+// Get registers a custom route with method @GET.
 func (gw *Gateway) Get(url string, handler HandlerFunc) *Route {
 	return gw.addRoute(http.MethodGet, url, handler)
 }
 
-// Register a custom route with method @POST.
+// Post registers a custom route with method @POST.
 func (gw *Gateway) Post(url string, handler HandlerFunc) *Route {
 	return gw.addRoute(http.MethodPost, url, handler)
 }
 
-// Register a custom route with method @PUT.
+// Put registers a custom route with method @PUT.
 func (gw *Gateway) Put(url string, handler HandlerFunc) *Route {
 	return gw.addRoute(http.MethodPut, url, handler)
 }
 
-// Register a custom route with method @DELETE.
+// Delete registers a custom route with method @DELETE.
 func (gw *Gateway) Delete(url string, handler HandlerFunc) *Route {
 	return gw.addRoute(http.MethodDelete, url, handler)
 }
 
-// Register a custom route with method @HEAD.
+// Head registers a custom route with method @HEAD.
 func (gw *Gateway) Head(url string, handler HandlerFunc) *Route {
 	return gw.addRoute(http.MethodHead, url, handler)
+}
+
+// RegisterMiddleware registers a middleware instance to the gateway.
+func (gw *Gateway) RegisterMiddleware(fn MiddlewareFunc, matcher ...matcherFunc) error {
+	mw := newMiddleware(fn, matcher...)
+
+	gw.mwRegistry.push(mwPreRunner, mw)
+
+	return nil
 }
 
 func (gw *Gateway) getOrCreateMethodTree(method string) *tree {
@@ -292,6 +302,10 @@ func (gw *Gateway) findNamedRoute(ctx *Context) *Route {
 func (gw *Gateway) serve(ctx *Context) {
 	// In case of any panics, we catch it and log it.
 	defer func() {
+		if !gw.isProd {
+			return
+		}
+
 		prec := recover()
 
 		if prec != nil && gw.panicHandler != nil {
@@ -311,23 +325,36 @@ func (gw *Gateway) serve(ctx *Context) {
 		return
 	}
 
+	globalMws := gw.filterMatchingMiddlewares(ctx)
+
+	handler := gw.getMatchingHandlerFunc(ctx)
+
+	finalChain := globalMws.getHandlerFuncSlice(handler)
+
+	finalChain[0](ctx)
+}
+
+// getMatchingHandlerFunc returns the handler to matches to the given context.
+// Firstly it looks amongs the named routes, then among the available services,
+// then it returns a 404 handler.
+func (gw *Gateway) getMatchingHandlerFunc(ctx *Context) HandlerFunc {
 	// Firstly we look among the named routes.
 	// If we have some explicit match, then we have to
 	// execute its mwchain.
 	if route := gw.findNamedRoute(ctx); route != nil {
-		route.run(ctx)
-		return
+		return route.getChain()
 	}
 
 	// After try to forward it to specific service.
 	s := gw.serviceRegisty.findService(ctx.GetUrlWithoutQueryParams())
 
 	if s != nil {
-		s.Handle(ctx)
+		return s.Handle
 	}
 
-	// In any other case, we simply return 404.
-	ctx.SendNotFound()
+	return func(ctx *Context) {
+		ctx.SendNotFound()
+	}
 }
 
 // ServeHTTP serves the incoming HTTP request.
@@ -345,4 +372,16 @@ func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// the same pointer.
 	ctx.empty()
 	gw.contextPool.Put(ctx)
+}
+
+func (g *Gateway) filterMatchingMiddlewares(ctx *Context) middlewareChain {
+	preMws := g.mwRegistry.get(mwPreRunner)
+
+	var filterFn = func(m *middleware) bool {
+		return m.doesMatch(ctx)
+	}
+
+	chain := filter(preMws, filterFn)
+
+	return chain
 }

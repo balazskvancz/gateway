@@ -10,7 +10,7 @@ import (
 
 const (
 	// 3 sec
-	defaultClientTimeout = 3000 * time.Millisecond
+	defaultClientTimeout time.Duration = 3000 * time.Millisecond
 )
 
 type httpClient struct {
@@ -31,8 +31,10 @@ func withHostName(hname string) httpClientOptionFunc {
 // newHttpClient returns a new client.
 func newHttpClient(opts ...httpClientOptionFunc) *httpClient {
 	hc := &httpClient{
-		Client: http.DefaultClient,
-		ctx:    context.Background(),
+		Client: &http.Client{
+			Timeout: defaultClientTimeout,
+		},
+		ctx: context.Background(),
 	}
 
 	for _, o := range opts {

@@ -3,12 +3,14 @@ package gateway
 import (
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/balazskvancz/gateway/pkg/utils"
 )
@@ -39,6 +41,7 @@ type Context struct {
 
 	contextId     uint64
 	contextIdChan contextIdChan
+	startTime     time.Time
 }
 
 // newContext creates and returns a new context.
@@ -62,6 +65,8 @@ func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
 // empty makes the http.Request and http.ResponseWrite <nil>.
 // Should be called before putting the Context back to the pool.
 func (c *Context) empty() {
+	c.discard()
+
 	c.request = nil
 	c.writer = nil
 }
@@ -276,4 +281,24 @@ func (ctx *Context) appendHttpHeader(header http.Header) {
 	for k, v := range header {
 		ctx.writer.Header().Add(k, strings.Join(v, "; "))
 	}
+}
+
+func (ctx *Context) discard() {
+	m := ctx.GetRequestMethod()
+
+	if m != http.MethodPost && m != http.MethodPut {
+		return
+	}
+
+	reader := ctx.GetRequest().Body
+
+	// Just in case we always read and discard the request body
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		// If the error is the reading after close, we simply ignore it.
+		if !errors.Is(err, http.ErrBodyReadAfterClose) {
+			fmt.Println(err)
+		}
+		return
+	}
+	reader.Close()
 }
