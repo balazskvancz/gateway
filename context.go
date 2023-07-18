@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -33,8 +34,18 @@ type pathParam struct {
 
 type contextIdChan <-chan uint64
 
+type responseWriter struct {
+	statusCode        int
+	header            http.Header
+	b                 []byte
+	isSimpleHttpError bool
+	isWritten         bool
+
+	w http.ResponseWriter
+}
+
 type Context struct {
-	writer  http.ResponseWriter
+	writer  *responseWriter
 	request *http.Request
 
 	params []pathParam
@@ -49,16 +60,21 @@ func newContext(ciChan contextIdChan) *Context {
 	return &Context{
 		contextIdChan: ciChan,
 		params:        make([]pathParam, maxParams),
+		writer:        newResponseWriter(),
 	}
+}
+
+func newResponseWriter() *responseWriter {
+	return &responseWriter{}
 }
 
 // reset resets the context entity to default state.
 func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
+	ctx.writer.w = w
 	ctx.request = r
-	ctx.writer = w
 	ctx.params = ctx.params[:0]
 
-	// És kiolvassuk az channelből érkező azonosítót is.
+	// We set the next id from the channel.
 	ctx.contextId = <-ctx.contextIdChan
 }
 
@@ -68,7 +84,7 @@ func (c *Context) empty() {
 	c.discard()
 
 	c.request = nil
-	c.writer = nil
+	c.writer.empty()
 }
 
 // GetRequest returns the attached http.Request.
@@ -185,8 +201,13 @@ func (ctx *Context) GetParam(key string) string {
 func (ctx *Context) SendRaw(b []byte, statusCode int, header http.Header) {
 	writer := ctx.writer
 
-	writer.WriteHeader(statusCode)
-	writer.Write(b)
+	if writer.isWritten {
+		return
+	}
+
+	writer.isWritten = true
+	writer.setStatus(statusCode)
+	writer.write(b)
 	ctx.appendHttpHeader(header)
 }
 
@@ -253,7 +274,13 @@ func (ctx *Context) SendUnavailable() {
 // SendHttpError send HTTP error with the given code.
 // It also write the statusText inside the body, based on the code.
 func (ctx *Context) SendHttpError(code int) {
-	http.Error(ctx.writer, http.StatusText(code), code)
+	if ctx.writer.isWritten {
+		return
+	}
+
+	ctx.writer.isWritten = true
+	ctx.writer.isSimpleHttpError = true
+	ctx.writer.statusCode = code
 }
 
 // SendError sends a text error with HTTP 400 code in header.
@@ -272,14 +299,14 @@ func (ctx *Context) Pipe(res *http.Response) {
 	// We could use TeeReader if we want to know
 	// what are we writing to the request.
 	// r := io.TeeReader(res.Body, ctx.writer)
-	io.Copy(ctx.writer, res.Body)
+	ctx.writer.copy(res.Body)
 	ctx.appendHttpHeader(res.Header)
-	ctx.writer.WriteHeader(res.StatusCode)
+	ctx.writer.setStatus(res.StatusCode)
 }
 
 func (ctx *Context) appendHttpHeader(header http.Header) {
 	for k, v := range header {
-		ctx.writer.Header().Add(k, strings.Join(v, "; "))
+		ctx.writer.addHeader(k, strings.Join(v, "; "))
 	}
 }
 
@@ -301,4 +328,55 @@ func (ctx *Context) discard() {
 		return
 	}
 	reader.Close()
+}
+
+func (rw *responseWriter) empty() {
+	rw.b = rw.b[:0]
+	rw.header = http.Header{}
+	rw.isSimpleHttpError = false
+	rw.isWritten = false
+	rw.statusCode = 0
+	rw.w = nil
+}
+
+func (rw *responseWriter) write(b []byte) {
+	rw.b = b
+}
+
+func (rw *responseWriter) setStatus(statusCode int) {
+	rw.statusCode = statusCode
+}
+
+func (rw *responseWriter) addHeader(key, value string) {
+	rw.header.Add(key, value)
+}
+
+func (rw *responseWriter) copy(r io.Reader) {
+	buff := &bytes.Buffer{}
+
+	if _, err := io.Copy(buff, r); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	rw.b = buff.Bytes()
+}
+
+func (rw *responseWriter) writeToResponse() {
+	if rw.isSimpleHttpError {
+		http.Error(rw.w, http.StatusText(rw.statusCode), rw.statusCode)
+		return
+	}
+
+	for k, v := range rw.header {
+		value := strings.Join(v, ";")
+		rw.w.Header().Add(k, value)
+	}
+
+	rw.w.WriteHeader(rw.statusCode)
+	rw.w.Write(rw.b)
+}
+
+func isErrorCode(statusCode int) bool {
+	return statusCode > 300
 }

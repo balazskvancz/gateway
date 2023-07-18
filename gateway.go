@@ -99,6 +99,8 @@ func getContextIdChannel() contextIdChan {
 // New returns a new instance of the gateway
 // decorated with the given opts.
 func New(opts ...GatewayOptionFunc) *Gateway {
+	channel := getContextIdChannel()
+
 	gw := &Gateway{
 		address:     defaultAddress,
 		ctx:         defaultContext,
@@ -108,7 +110,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 
 		contextPool: sync.Pool{
 			New: func() interface{} {
-				return newContext(getContextIdChannel())
+				return newContext(channel)
 			},
 		},
 
@@ -332,6 +334,8 @@ func (gw *Gateway) serve(ctx *Context) {
 	finalChain := globalMws.getHandlerFuncSlice(handler)
 
 	finalChain[0](ctx)
+
+	ctx.writer.writeToResponse()
 }
 
 // getMatchingHandlerFunc returns the handler to matches to the given context.
