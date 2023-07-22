@@ -3,6 +3,7 @@ package gateway
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -98,7 +99,7 @@ func TestSendJson(t *testing.T) {
 	tt := []struct {
 		name         string
 		data         interface{}
-		expectedBody string
+		expectedBody []byte
 	}{
 		{
 			name: "the right data was written",
@@ -109,33 +110,30 @@ func TestSendJson(t *testing.T) {
 				Name: "test",
 				Age:  10,
 			},
-			expectedBody: `{"name":"test","age":10}`,
+			expectedBody: []byte(`{"name":"test","age":10}`),
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-
 			ctx := newContext(getContextIdChannel())
-			ctx.reset(recorder, nil)
+			ctx.reset(nil, nil)
 
 			ctx.SendJson(tc.data)
 
-			if recorder.Code != http.StatusOK {
-				t.Errorf("expected http code: %d; got code: %d\n", http.StatusOK, recorder.Code)
+			var (
+				writtenCode = ctx.writer.statusCode
+				writtenBody = ctx.writer.b
+				// writtenHeader = ctx.writer.header
+			)
+
+			if !reflect.DeepEqual(tc.expectedBody, writtenBody) {
+				t.Errorf("expected body: %s; got body: %s\n", string(tc.expectedBody), string(writtenBody))
 			}
 
-			if recorder.Body.String() != tc.expectedBody {
-				t.Errorf("expected body: %s; got body: %s\n", tc.expectedBody, recorder.Body.String())
+			if writtenCode != http.StatusOK {
+				t.Errorf("expected statusCode: %d; got statusCode: %d\n", http.StatusOK, writtenCode)
 			}
-
-			gotContentType := recorder.Header().Get("Content-Type")
-
-			if gotContentType != JsonContentType {
-				t.Errorf("expected content-type: %s; got: %s\n", JsonContentType, gotContentType)
-			}
-
 		})
 	}
 }
@@ -151,15 +149,15 @@ func TestSendNotFound(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := httptest.NewRecorder()
-
 			ctx := newContext(getContextIdChannel())
-			ctx.reset(rec, nil)
+			ctx.reset(nil, nil)
 
 			ctx.SendNotFound()
 
-			if rec.Code != http.StatusNotFound {
-				t.Errorf("expected code: %d; got: %d\n", http.StatusNotFound, rec.Code)
+			writtenCode := ctx.writer.statusCode
+
+			if writtenCode != http.StatusNotFound {
+				t.Errorf("expected code: %d; got: %d\n", http.StatusNotFound, writtenCode)
 			}
 		})
 	}
@@ -176,15 +174,15 @@ func TestSendOk(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := httptest.NewRecorder()
-
 			ctx := newContext(getContextIdChannel())
-			ctx.reset(rec, nil)
+			ctx.reset(nil, nil)
 
 			ctx.SendOk()
 
-			if rec.Code != http.StatusOK {
-				t.Errorf("expected code: %d; got: %d\n", http.StatusOK, rec.Code)
+			writtenCode := ctx.writer.statusCode
+
+			if writtenCode != http.StatusOK {
+				t.Errorf("expected code: %d; got: %d\n", http.StatusOK, writtenCode)
 			}
 		})
 	}

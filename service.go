@@ -34,6 +34,8 @@ type ServiceConfig struct {
 
 type Service interface {
 	Handle(*Context)
+	Get(string, ...http.Header) (*http.Response, error)
+	Post(string, []byte, ...http.Header) (*http.Response, error)
 }
 
 type service struct {

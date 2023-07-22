@@ -1,95 +1,77 @@
 package gateway
 
-import (
-	"sync"
+type MiddlewareType string
+
+const (
+	MiddlewarePreRunner MiddlewareType = "preRunner"
+	MiddlwarePostRunner MiddlewareType = "postRunner"
 )
 
-type matcherFunc func(*Context) bool
+type Middleware interface {
+	DoesMatch(*Context) bool
+	IsPreRunner() bool
+	Exec(*Context, HandlerFunc)
+}
+
+type MatcherFunc func(*Context) bool
 
 type middleware struct {
 	mw      MiddlewareFunc
-	matcher matcherFunc
+	matcher MatcherFunc
+	t       MiddlewareType
 }
+
+var _ Middleware = (*middleware)(nil)
 
 type (
-	middlewareType string
-
-	middlewareChain []*middleware
-)
-
-type middlewareRegistry struct {
-	mu       sync.RWMutex
-	registry map[middlewareType]middlewareChain
-}
-
-const (
-	mwPreRunner  middlewareType = "pre"
-	mwPostRunner middlewareType = "post"
+	middlewareChain []Middleware
 )
 
 func DefaultMiddlewareMatcher(_ *Context) bool { return true }
 
+type middlewareOptionFunc func(*middleware)
+
+func withMiddlewareType(t MiddlewareType) middlewareOptionFunc {
+	return func(m *middleware) {
+		m.t = t
+	}
+}
+
+func withMiddlewareMatcherFunc(fn MatcherFunc) middlewareOptionFunc {
+	return func(m *middleware) {
+		m.matcher = fn
+	}
+}
+
 // newMiddleware is a factory function for middleware creation.
-func newMiddleware(mw MiddlewareFunc, matcher ...matcherFunc) *middleware {
-	m := &middleware{
-		mw:      mw,
+func newMiddleware(mwFunc MiddlewareFunc, opts ...middlewareOptionFunc) Middleware {
+	mw := &middleware{
+		mw:      mwFunc,
 		matcher: DefaultMiddlewareMatcher,
 	}
 
-	if len(matcher) > 0 {
-		m.matcher = matcher[0]
+	for _, o := range opts {
+		o(mw)
 	}
 
-	return m
+	return mw
 }
 
-func (m *middleware) doesMatch(ctx *Context) bool {
+func (m *middleware) DoesMatch(ctx *Context) bool {
 	return m.matcher(ctx)
 }
 
-// newMiddlewareRegistry creates and returns a new empty middleware registry.
-func newMiddlewareRegistry() *middlewareRegistry {
-	mw := make(map[middlewareType]middlewareChain)
-
-	mw[mwPreRunner] = make(middlewareChain, 0)
-	mw[mwPostRunner] = make(middlewareChain, 0)
-
-	return &middlewareRegistry{
-		mu:       sync.RWMutex{},
-		registry: mw,
-	}
+func (m *middleware) IsPreRunner() bool {
+	return m.t == MiddlewarePreRunner
 }
 
-// push pushes a middleware into the registry with the given mw type.
-func (mr *middlewareRegistry) push(t middlewareType, mw *middleware) {
-	mr.mu.Lock()
-	defer mr.mu.Unlock()
-
-	chain, exists := mr.registry[t]
-	if !exists {
-		// todo
-		return
-	}
-
-	mr.registry[t] = append(chain, mw)
+func (m *middleware) Exec(ctx *Context, next HandlerFunc) {
+	m.mw(ctx, next)
 }
 
-// get returns the middlewarechain by the given type.
-func (mr *middlewareRegistry) get(t middlewareType) middlewareChain {
-	chain, exists := mr.registry[t]
-	if !exists {
-		return nil
-	}
-	return chain
-}
-
-// getHandlerFuncSlice returns a slice of consecutive handlers wrapped inside
-// the middleware funcs.
-func (chain middlewareChain) getHandlerFuncSlice(next HandlerFunc) []HandlerFunc {
+func (chain middlewareChain) createChain(next HandlerFunc) []HandlerFunc {
 	tlen := len(chain)
 
-	// In case there is not matching middleware, then the only
-	// one is the handler itself.
 	if tlen == 0 {
 		return []HandlerFunc{next}
 	}
@@ -97,14 +79,13 @@ func (chain middlewareChain) getHandlerFuncSlice(next HandlerFunc) []HandlerFunc
 	funcSlice := make([]HandlerFunc, tlen)
 
 	funcSlice[tlen-1] = func(ctx *Context) {
-		chain[tlen-1].mw(ctx, next)
+		chain[tlen-1].Exec(ctx, next)
 	}
 
-	for i := tlen - 2; i > 0; i-- {
-		mw := chain[i].mw
-
+	for i := tlen - 2; i >= 0; i-- {
+		var idx = i
 		funcSlice[i] = func(ctx *Context) {
-			mw(ctx, funcSlice[i+1])
+			chain[idx].Exec(ctx, funcSlice[idx+1])
 		}
 	}
 

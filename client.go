@@ -17,6 +17,7 @@ type httpClient struct {
 	ctx context.Context
 	*http.Client
 
+	//
 	hostName string
 }
 

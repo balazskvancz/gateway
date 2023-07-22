@@ -65,7 +65,9 @@ func newContext(ciChan contextIdChan) *Context {
 }
 
 func newResponseWriter() *responseWriter {
-	return &responseWriter{}
+	return &responseWriter{
+		header: http.Header{},
+	}
 }
 
 // reset resets the context entity to default state.
@@ -73,6 +75,7 @@ func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
 	ctx.writer.w = w
 	ctx.request = r
 	ctx.params = ctx.params[:0]
+	ctx.startTime = time.Now()
 
 	// We set the next id from the channel.
 	ctx.contextId = <-ctx.contextIdChan
@@ -214,7 +217,6 @@ func (ctx *Context) SendRaw(b []byte, statusCode int, header http.Header) {
 // Sends JSON response to client.
 func (ctx *Context) SendJson(data interface{}) {
 	b, err := json.Marshal(data)
-
 	if err != nil {
 		fmt.Printf("marshal err: %v\n", err)
 
@@ -377,6 +379,13 @@ func (rw *responseWriter) writeToResponse() {
 	rw.w.Write(rw.b)
 }
 
-func isErrorCode(statusCode int) bool {
-	return statusCode > 300
+func (ctx *Context) getLog() []byte {
+	elapsedTime := time.Since(ctx.startTime)
+
+	method, url, code, time := ctx.GetRequestMethod(),
+		ctx.GetFullUrl(),
+		ctx.writer.statusCode,
+		elapsedTime.Milliseconds()
+
+	return []byte(fmt.Sprintf("[%s]\t%s\t%d\t%dms\n", method, url, code, time))
 }

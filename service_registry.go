@@ -11,7 +11,7 @@ const (
 
 type registry struct {
 	healthCheckFrequency time.Duration
-	serviceTree          *tree
+	serviceTree          *tree[*service]
 }
 
 type registryOptionFunc func(*registry)
@@ -26,7 +26,7 @@ func withHealthCheck(freq time.Duration) registryOptionFunc {
 func newRegistry(opts ...registryOptionFunc) *registry {
 	r := &registry{
 		healthCheckFrequency: defaultHealthCheckFreq,
-		serviceTree:          newTree(),
+		serviceTree:          newTree[*service](),
 	}
 
 	for _, o := range opts {
@@ -65,34 +65,20 @@ func (r *registry) findService(url string) *service {
 		return nil
 	}
 
-	service, ok := node.value.(*service)
-	if !ok {
-		return nil
-	}
-
-	return service
+	return node.value
 }
 
 // getServiceByName searches for services by the given name.
 func (r *registry) getServiceByName(name string) *service {
-	node := r.serviceTree.getByPredicate(func(n *node) bool {
-		s, ok := n.value.(*service)
-		if !ok {
-			return false
-		}
-		return s.Name == name
+	node := r.serviceTree.getByPredicate(func(n *node[*service]) bool {
+		return n.value.Name == name
 	})
 
 	if node == nil {
 		return nil
 	}
 
-	serv, ok := node.value.(*service)
-	if !ok {
-		return nil
-	}
-
-	return serv
+	return node.value
 }
 
 // Updates the status of the services, in the registry.
@@ -103,11 +89,7 @@ func (r *registry) updateStatus() {
 		nodes := r.serviceTree.getAllLeaf()
 
 		for _, n := range nodes {
-			service, ok := n.value.(*service)
-			if !ok {
-				fmt.Println("error with *Service casting")
-				continue
-			}
+			service := n.value
 
 			if err := service.checkStatus(); err != nil {
 				fmt.Printf("[registry] service %s – checkStatus error: %v\n", service.Name, err)

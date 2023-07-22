@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -28,13 +29,32 @@ var (
 	defaultContext = context.Background()
 )
 
-type Gateway struct {
-	// Listening address for incming HTTP/1* connections.
-	address int
+type runLevel uint8
+
+const (
+	lvlDev     runLevel = 1 << iota // 1
+	lvlProd                         // 2
+	mwDisabled                      // 4
+	mwEnabled                       // 8
+)
+
+type GatewayInfo struct {
+	// Listening Address for incming HTTP/1* connections.
+	Address int `json:"address"`
 
 	//
-	isProd bool
+	RunLevel runLevel `json:"runLevel"`
 
+	SecretKey string `json:"secretKey"`
+}
+
+type GatewayConfig struct {
+	*GatewayInfo
+	Services []*ServiceConfig `json:"services"`
+}
+
+type Gateway struct {
+	info *GatewayInfo
 	// Base-context of the Gateway.
 	ctx context.Context
 
@@ -42,7 +62,7 @@ type Gateway struct {
 	// Every HTTP Method gets a different, by default empty
 	// tree, then stored in a map, where the key is the
 	// method itself.
-	methodTrees map[string]*tree
+	methodTrees map[string]*tree[*Route]
 
 	// The registy which stores all the registered services.
 	serviceRegisty *registry
@@ -56,7 +76,7 @@ type Gateway struct {
 	// We store two different types of middlewares.
 	// There is one for before all execution and one
 	// for after all execution order.
-	mwRegistry middlewareRegistry
+	middlewares []Middleware
 
 	// Custom handler for HTTP 404. Everytime a specific
 	// route is not found or a service returned 404 it gets called.
@@ -68,6 +88,8 @@ type Gateway struct {
 
 	// Custom handler function for panics.
 	panicHandler PanicHandlerFunc
+
+	logger logger
 }
 
 var _ (http.Handler) = (*Gateway)(nil)
@@ -96,15 +118,48 @@ func getContextIdChannel() contextIdChan {
 	return ch
 }
 
+func WithAddress(address int) GatewayOptionFunc {
+	return func(g *Gateway) {
+		g.info.Address = address
+	}
+}
+
+func WithRunLevel(lvl runLevel) GatewayOptionFunc {
+	return func(g *Gateway) {
+		g.info.RunLevel = lvl
+	}
+}
+
+func WithSecretKey(key string) GatewayOptionFunc {
+	return func(g *Gateway) {
+		g.info.SecretKey = key
+	}
+}
+
+// NewFromConfig creates and returns a new Gateway based on
+// the given config file path. In case of any errors
+// – due to IO reading or marshal error – it returns the error also.
+func NewFromConfig(path string) (*Gateway, error) {
+	opts, err := ReadConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	return New(opts...), nil
+}
+
 // New returns a new instance of the gateway
 // decorated with the given opts.
 func New(opts ...GatewayOptionFunc) *Gateway {
 	channel := getContextIdChannel()
 
 	gw := &Gateway{
-		address:     defaultAddress,
+		info: &GatewayInfo{
+			Address:  defaultAddress,
+			RunLevel: lvlDev,
+		},
+
 		ctx:         defaultContext,
-		methodTrees: make(map[string]*tree),
+		methodTrees: make(map[string]*tree[*Route]),
 
 		serviceRegisty: newRegistry(withHealthCheck(defaultHealthCheckFreq)),
 
@@ -114,15 +169,20 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 			},
 		},
 
-		mwRegistry: *newMiddlewareRegistry(),
+		middlewares: make([]Middleware, 0),
 
 		notFoundHandler: defaultNotFoundHandler,
 		panicHandler:    defaultPanicHandler,
+		logger:          newGatewayLogger(),
 	}
 
 	for _, o := range opts {
 		o(gw)
 	}
+
+	gw.RegisterMiddleware(
+		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlwarePostRunner,
+	)
 
 	return gw
 }
@@ -132,29 +192,55 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 // which can be passed into the New factory.
 // In case of unexpected behaviour, it returns error.
 func ReadConfig(path string) ([]GatewayOptionFunc, error) {
-	return nil, nil
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	conf, err := parseConfig(b)
+	if err != nil {
+		return nil, err
+	}
+
+	funcs := make([]GatewayOptionFunc, 0)
+
+	if conf.Address > 0 {
+		funcs = append(funcs, WithAddress(conf.Address))
+	}
+
+	if conf.RunLevel > 0 {
+		funcs = append(funcs, WithRunLevel(conf.RunLevel))
+	}
+
+	if conf.SecretKey != "" {
+		funcs = append(funcs, WithSecretKey(conf.SecretKey))
+	}
+
+	return funcs, nil
+}
+
+func parseConfig(b []byte) (*GatewayConfig, error) {
+	conf := &GatewayConfig{}
+	if err := json.Unmarshal(b, conf); err != nil {
+		return nil, err
+	}
+	return conf, nil
 }
 
 // Start the main process for the Gateway.
 // It listens until it receives the signal to close it.
 // This method sutable for graceful shutdown.
 func (gw *Gateway) Start() {
-	addr := fmt.Sprintf(":%d", gw.address)
-
-	mode := func() string {
-		if gw.isProd {
-			return "PROD"
-		}
-		return "DEV"
-	}()
-
+	addr := fmt.Sprintf(":%d", gw.info.Address)
 	// Change to logger.
-	fmt.Printf("The gateway started at %s, in mode: %s\n", addr, mode)
+	fmt.Printf("The gateway started at %s\n", addr)
 
 	srv := http.Server{
 		Addr:    addr,
 		Handler: gw,
 	}
+
+	gw.methodTrees[http.MethodGet].displayTree()
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
@@ -166,7 +252,7 @@ func (gw *Gateway) Start() {
 	}()
 
 	// If we running inside DEV mode, we use mock calls.
-	if !gw.isProd {
+	if !gw.isProd() {
 		mock := mock.New(gw)
 
 		// If the mock is not nil, we should watch for file change.
@@ -209,7 +295,7 @@ func (gw *Gateway) GetService(name string) (*service, error) {
 func (gw *Gateway) ListenForMocks(mocks *[]mock.MockCall) {
 	// Just in case, if its not DEV mode
 	// we should never update the mocks!
-	if gw.isProd {
+	if gw.isProd() {
 		return
 	}
 
@@ -242,22 +328,32 @@ func (gw *Gateway) Head(url string, handler HandlerFunc) *Route {
 }
 
 // RegisterMiddleware registers a middleware instance to the gateway.
-func (gw *Gateway) RegisterMiddleware(fn MiddlewareFunc, matcher ...matcherFunc) error {
-	mw := newMiddleware(fn, matcher...)
+func (gw *Gateway) RegisterMiddleware(fn MiddlewareFunc, matcher MatcherFunc, mwType ...MiddlewareType) error {
+	t := func() MiddlewareType {
+		if len(mwType) > 0 {
+			return mwType[0]
+		}
+		return MiddlewarePreRunner
+	}()
 
-	gw.mwRegistry.push(mwPreRunner, mw)
+	mw := newMiddleware(fn,
+		withMiddlewareMatcherFunc(matcher),
+		withMiddlewareType(t),
+	)
+
+	gw.middlewares = append(gw.middlewares, mw)
 
 	return nil
 }
 
-func (gw *Gateway) getOrCreateMethodTree(method string) *tree {
+func (gw *Gateway) getOrCreateMethodTree(method string) *tree[*Route] {
 	tree, exists := gw.methodTrees[method]
 
 	if exists {
 		return tree
 	}
 
-	t := newTree()
+	t := newTree[*Route]()
 	gw.methodTrees[method] = t
 
 	return gw.methodTrees[method]
@@ -269,6 +365,7 @@ func (gw *Gateway) addRoute(method, url string, handler HandlerFunc) *Route {
 	tree := gw.getOrCreateMethodTree(method)
 
 	if err := tree.insert(url, route); err != nil {
+		fmt.Println(err)
 		// todo logging
 		return nil
 	}
@@ -285,14 +382,15 @@ func (gw *Gateway) findNamedRoute(ctx *Context) *Route {
 	url := ctx.GetUrlWithoutQueryParams()
 
 	node := tree.find(url)
-	if node == nil {
+	if isNil(node) {
 		return nil
 	}
 
-	route, ok := node.value.(*Route)
-	if !ok {
+	if !node.isLeaf() {
 		return nil
 	}
+
+	route := node.value
 
 	pathParams := getPathParams(route.fullUrl, url)
 	ctx.setParams(pathParams)
@@ -304,7 +402,7 @@ func (gw *Gateway) findNamedRoute(ctx *Context) *Route {
 func (gw *Gateway) serve(ctx *Context) {
 	// In case of any panics, we catch it and log it.
 	defer func() {
-		if !gw.isProd {
+		if !gw.isProd() {
 			return
 		}
 
@@ -327,15 +425,14 @@ func (gw *Gateway) serve(ctx *Context) {
 		return
 	}
 
-	globalMws := gw.filterMatchingMiddlewares(ctx)
+	var (
+		middlewares = gw.filterMatchingMiddlewares(ctx)
+		handler     = gw.getMatchingHandlerFunc(ctx)
+	)
 
-	handler := gw.getMatchingHandlerFunc(ctx)
+	finalHandler := middlewares.getHandler(handler)
 
-	finalChain := globalMws.getHandlerFuncSlice(handler)
-
-	finalChain[0](ctx)
-
-	ctx.writer.writeToResponse()
+	finalHandler(ctx)
 }
 
 // getMatchingHandlerFunc returns the handler to matches to the given context.
@@ -378,14 +475,72 @@ func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gw.contextPool.Put(ctx)
 }
 
-func (g *Gateway) filterMatchingMiddlewares(ctx *Context) middlewareChain {
-	preMws := g.mwRegistry.get(mwPreRunner)
+type matchingMiddleware struct {
+	pre  middlewareChain
+	post middlewareChain
+}
 
-	var filterFn = func(m *middleware) bool {
-		return m.doesMatch(ctx)
+func (g *Gateway) filterMatchingMiddlewares(ctx *Context) *matchingMiddleware {
+	mm := &matchingMiddleware{
+		pre:  make([]Middleware, 0),
+		post: make([]Middleware, 0),
 	}
 
-	chain := filter(preMws, filterFn)
+	if !g.areMiddlewaresEnabled() {
+		return mm
+	}
 
-	return chain
+	reduce(g.middlewares, func(acc *matchingMiddleware, curr Middleware) *matchingMiddleware {
+		if !curr.DoesMatch(ctx) {
+			return acc
+		}
+
+		if curr.IsPreRunner() {
+			acc.pre = append(acc.pre, curr)
+			return acc
+		}
+
+		acc.post = append(acc.post, curr)
+		return acc
+	}, mm)
+
+	return mm
+}
+
+func writeToResponseMiddleware(ctx *Context) {
+	ctx.writer.writeToResponse()
+}
+
+func (mm *matchingMiddleware) getHandler(handler HandlerFunc) HandlerFunc {
+	postChain := mm.post.createChain(writeToResponseMiddleware)
+
+	// Wrap the given HandlerFunc inside a MW func, which calls
+	// the first element of the post chain.
+	handlerMw := func(ctx *Context) {
+		handler(ctx)
+		if len(postChain) > 0 {
+			postChain[0](ctx)
+		}
+	}
+
+	preChain := mm.pre.createChain(handlerMw)
+
+	return preChain[0]
+}
+
+// isProd returns whether the the GW is running in production env.
+func (g *Gateway) isProd() bool {
+	return g.info.RunLevel&lvlProd == lvlProd
+}
+
+// areMiddlewaresEnabled returns whether the the middlewares are enabled.
+func (g *Gateway) areMiddlewaresEnabled() bool {
+	return g.info.RunLevel&mwEnabled == mwEnabled
+}
+
+func loggerMiddleware(g *Gateway) MiddlewareFunc {
+	return func(ctx *Context, next HandlerFunc) {
+		g.logger.info(ctx.getLog())
+		next(ctx)
+	}
 }

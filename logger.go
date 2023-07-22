@@ -11,7 +11,7 @@ type gatewayLogger struct {
 }
 
 type logger interface {
-	info(string)
+	info([]byte)
 	error(string)
 	warning(string)
 }
@@ -23,13 +23,16 @@ const (
 var _ logger = (*gatewayLogger)(nil)
 
 func newGatewayLogger() logger {
-	logPrefix := fmt.Sprintf("api-gateway %s", Version)
+	logPrefix := fmt.Sprintf("[api-gateway %s] ", Version)
 	return &gatewayLogger{
 		Logger: log.New(os.Stdout, logPrefix, defaultLogFlag),
 	}
 }
 
-func (l *gatewayLogger) info(v string) {}
+func (l *gatewayLogger) info(b []byte) {
+	l.Printf(string(b))
+	// l.Writer().Write(b)
+}
 
 func (l *gatewayLogger) error(v string) {}
 
