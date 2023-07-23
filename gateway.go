@@ -273,6 +273,9 @@ func (gw *Gateway) Start() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	<-sigCh
+
+	gw.logger.clean()
+
 	if err := srv.Shutdown(gw.ctx); err != nil {
 		fmt.Printf("[GATEWAY]: shutdown err: %v\n", err)
 		os.Exit(1)
@@ -540,7 +543,7 @@ func (g *Gateway) areMiddlewaresEnabled() bool {
 
 func loggerMiddleware(g *Gateway) MiddlewareFunc {
 	return func(ctx *Context, next HandlerFunc) {
-		g.logger.info(ctx.getLog())
+		g.logger.info(string(ctx.getLog()))
 		next(ctx)
 	}
 }

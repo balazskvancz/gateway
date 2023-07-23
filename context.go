@@ -382,10 +382,13 @@ func (rw *responseWriter) writeToResponse() {
 func (ctx *Context) getLog() []byte {
 	elapsedTime := time.Since(ctx.startTime)
 
-	method, url, code, time := ctx.GetRequestMethod(),
-		ctx.GetFullUrl(),
-		ctx.writer.statusCode,
-		elapsedTime.Milliseconds()
+	var (
+		method = ctx.GetRequestMethod()
+		url    = ctx.GetFullUrl()
+		code   = ctx.writer.statusCode
+		time   = elapsedTime.Milliseconds()
+		cId    = ctx.contextId
+	)
 
-	return []byte(fmt.Sprintf("[%s]\t%s\t%d\t%dms\n", method, url, code, time))
+	return []byte(fmt.Sprintf("[%d]\t[%s]\t%s\t%d\t%dms", cId, method, url, code, time))
 }
