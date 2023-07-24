@@ -12,6 +12,7 @@ const (
 type registry struct {
 	healthCheckFrequency time.Duration
 	serviceTree          *tree[*service]
+	logger
 }
 
 type registryOptionFunc func(*registry)
@@ -19,6 +20,12 @@ type registryOptionFunc func(*registry)
 func withHealthCheck(freq time.Duration) registryOptionFunc {
 	return func(r *registry) {
 		r.healthCheckFrequency = freq
+	}
+}
+
+func withLogger(l logger) registryOptionFunc {
+	return func(r *registry) {
+		r.logger = l
 	}
 }
 
@@ -94,7 +101,8 @@ func (r *registry) updateStatus() {
 			service := n.value
 
 			if err := service.checkStatus(); err != nil {
-				fmt.Printf("[registry] service %s – checkStatus error: %v\n", service.Name, err)
+				l := fmt.Sprintf("[registry] service %s – checkStatus error: %v\n", service.Name, err)
+				r.logger.Error(l)
 			}
 		}
 
@@ -113,4 +121,16 @@ func (r *registry) setServiceAvailable(name string) {
 	}
 
 	service.setState(StateAvailable)
+}
+
+func (r *registry) getAllServices() []*service {
+	var (
+		nodes = r.serviceTree.getAllLeaf()
+		s     = make([]*service, len(nodes))
+	)
+
+	for i, node := range nodes {
+		s[i] = node.value
+	}
+	return s
 }

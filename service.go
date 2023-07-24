@@ -24,6 +24,13 @@ const (
 	timeOutDur = timeOutSec * time.Second
 )
 
+var stateTexts = map[serviceState]string{
+	StateAvailable:  "available",
+	StateRefused:    "refused",
+	StateRegistered: "registered",
+	StateUnknown:    "unknown",
+}
+
 var enabledProtocols = []string{"http", "https"}
 
 type ServiceConfig struct {
@@ -102,7 +109,7 @@ func (s *service) Handle(ctx *Context) {
 
 	res, err := cl.pipe(ctx.GetRequest())
 	if err != nil {
-		// todo
+		s.setState(StateRefused)
 		fmt.Println(err)
 		ctx.SendInternalServerError()
 		return

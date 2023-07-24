@@ -3,8 +3,8 @@ package gateway
 type MiddlewareType string
 
 const (
-	MiddlewarePreRunner MiddlewareType = "preRunner"
-	MiddlwarePostRunner MiddlewareType = "postRunner"
+	MiddlewarePreRunner  MiddlewareType = "preRunner"
+	MiddlewarePostRunner MiddlewareType = "postRunner"
 )
 
 type Middleware interface {

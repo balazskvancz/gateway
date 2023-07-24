@@ -2,12 +2,14 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 )
 
 type (
@@ -35,6 +37,11 @@ const (
 	mwEnabled                       // 8
 )
 
+const (
+	routeSystemInfo         = "/api/system/services/info"
+	routeUpdateServiceState = "/api/system/services/update"
+)
+
 type GatewayInfo struct {
 	// Listening Address for incming HTTP/1* connections.
 	Address int `json:"address"`
@@ -43,6 +50,8 @@ type GatewayInfo struct {
 	RunLevel runLevel `json:"runLevel"`
 
 	SecretKey string `json:"secretKey"`
+
+	startTime time.Time
 }
 
 type GatewayConfig struct {
@@ -172,14 +181,18 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 
 	gw := &Gateway{
 		info: &GatewayInfo{
-			Address:  defaultAddress,
-			RunLevel: lvlDev,
+			Address:   defaultAddress,
+			RunLevel:  lvlDev,
+			startTime: time.Now(),
 		},
 
 		ctx:         defaultContext,
 		methodTrees: make(map[string]*tree[*Route]),
 
-		serviceRegisty: newRegistry(withHealthCheck(defaultHealthCheckFreq)),
+		serviceRegisty: newRegistry(
+			withLogger(logger),
+			withHealthCheck(defaultHealthCheckFreq),
+		),
 
 		contextPool: sync.Pool{
 			New: func() interface{} {
@@ -199,8 +212,19 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 	}
 
 	gw.RegisterMiddleware(
-		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlwarePostRunner,
+		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlewarePostRunner,
 	)
+
+	gw.Post(routeSystemInfo, getServiceStateHandler(gw)).
+		registerMiddleware(validateIncomingRequest(gw, func(b []byte) (any, error) { return nil, nil }))
+
+	gw.Post(routeUpdateServiceState, serviceStateUpdateHandler(gw)).
+		registerMiddleware(validateIncomingRequest(gw, func(b []byte) (any, error) {
+			in := &updateServiceStateRequest{}
+			err := json.Unmarshal(b, in)
+
+			return in, err
+		}))
 
 	return gw
 }
@@ -226,15 +250,6 @@ func (gw *Gateway) Start() {
 		}
 
 	}()
-
-	// If we running inside DEV mode, we use mock calls.
-	// if !gw.isProd() {
-	// mock := mock.New(gw)
-	// If the mock is not nil, we should watch for file change.
-	// if mock != nil {
-	// go mock.WatchReload()
-	// }
-	// }
 
 	// Updating the status of each service.
 	go gw.serviceRegisty.updateStatus()

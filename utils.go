@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"reflect"
 	"strings"
 )
@@ -52,4 +54,10 @@ func getUrlParts(url string) []string {
 	}
 
 	return strings.Split(url, strSlash)[1:]
+}
+
+func createHash(plain []byte) string {
+	ha := sha256.New()
+	ha.Write([]byte(plain))
+	return hex.EncodeToString(ha.Sum(nil))
 }

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -23,6 +24,10 @@ const (
 	XmlContentType      = "application/xml"
 
 	maxParams uint8 = 8
+
+	// If there statusCode written to the context,
+	// this default will be written to the response.
+	defaultStatusCode = http.StatusOK
 )
 
 type pathParam struct {
@@ -43,6 +48,7 @@ type responseWriter struct {
 }
 
 type Context struct {
+	ctx context.Context
 	logger
 	writer  *responseWriter
 	request *http.Request
@@ -72,6 +78,7 @@ func newResponseWriter() *responseWriter {
 
 // reset resets the context entity to default state.
 func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
+	ctx.ctx = context.Background()
 	ctx.writer.w = w
 	ctx.request = r
 	ctx.params = ctx.params[:0]
@@ -101,6 +108,15 @@ func (ctx *Context) GetRequestMethod() string {
 		return ""
 	}
 	return ctx.request.Method
+}
+
+func (ctx *Context) BindValue(key, value any) {
+	contextWithValue := context.WithValue(ctx.ctx, key, value)
+	ctx.ctx = contextWithValue
+}
+
+func (ctx *Context) GetValue(key any) any {
+	return ctx.ctx.Value(key)
 }
 
 // GetFullUrl returns the full URL with all queryParams included.
@@ -375,7 +391,14 @@ func (rw *responseWriter) writeToResponse() {
 		rw.w.Header().Add(k, value)
 	}
 
-	rw.w.WriteHeader(rw.statusCode)
+	finalStatusCode := func() int {
+		if rw.statusCode == 0 {
+			return defaultStatusCode
+		}
+		return rw.statusCode
+	}()
+
+	rw.w.WriteHeader(finalStatusCode)
 	rw.w.Write(rw.b)
 }
 
@@ -391,4 +414,19 @@ func (ctx *Context) getLog() []byte {
 	)
 
 	return []byte(fmt.Sprintf("[%d]\t[%s]\t%s\t%d\t%dms", cId, method, url, code, time))
+}
+
+func (ctx *Context) Info(s string) {
+	v := fmt.Sprintf("[%d] message: %s", ctx.contextId, s)
+	ctx.logger.Info(v)
+}
+
+func (ctx *Context) Warning(s string) {
+	v := fmt.Sprintf("[%d] message: %s", ctx.contextId, s)
+	ctx.logger.Warning(v)
+}
+
+func (ctx *Context) Error(s string) {
+	v := fmt.Sprintf("[%d] message: %s", ctx.contextId, s)
+	ctx.logger.Error(v)
 }
