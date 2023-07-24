@@ -73,10 +73,10 @@ func (route *Route) getChain() HandlerFunc {
 
 // run executes a route's middleware chain. If middlewares are disabled on
 // the specific route, it will only execute the handler itself.
-func (route *Route) run(ctx *Context) {
-	chain := route.getChain()
-	chain(ctx)
-}
+// func (route *Route) run(ctx *Context) {
+// chain := route.getChain()
+// chain(ctx)
+// }
 
 // getHandler returns the actual handler, which is at the end of the chain.
 func (route *Route) getHandler() HandlerFunc {

@@ -169,3 +169,75 @@ func TestReduce(t *testing.T) {
 		}
 	})
 }
+
+func TestIncludes(t *testing.T) {
+	type testCase struct {
+		name             string
+		arr              []string
+		searchEl         string
+		expectedIncludes bool
+	}
+
+	tt := []testCase{
+		{
+			name:             "the fn returns true if the given string is included",
+			arr:              []string{"foo", "bar", "baz"},
+			searchEl:         "foo",
+			expectedIncludes: true,
+		},
+		{
+			name:             "the fn returns false if the given string is not included",
+			arr:              []string{"foo", "bar", "baz"},
+			searchEl:         "fo",
+			expectedIncludes: false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := includes(tc.arr, tc.searchEl)
+
+			if got != tc.expectedIncludes {
+				t.Errorf("expected: %v; got: %v\n", tc.expectedIncludes, got)
+			}
+		})
+	}
+}
+
+func TestGetUrlParts(t *testing.T) {
+	tt := []struct {
+		name     string
+		url      string
+		expected []string
+	}{
+		{
+			name:     "the function returns the parts, when normal url called",
+			url:      "/foo/bar/baz",
+			expected: []string{"foo", "bar", "baz"},
+		},
+		{
+			name:     "the function returns the parts, when / prefix missing",
+			url:      "foo/bar/baz",
+			expected: []string{"foo", "bar", "baz"},
+		},
+		{
+			name:     "the function returns the parts, when there are query params",
+			url:      "foo/bar/baz?foo=yes",
+			expected: []string{"foo", "bar", "baz"},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			parts := getUrlParts(tc.url)
+
+			if len(parts) != len(tc.expected) {
+				t.Fatalf("expected length: %d, got length: %d", len(tc.expected), len(parts))
+			}
+
+			if !reflect.DeepEqual(tc.expected, parts) {
+				t.Errorf("got slice is not as expected")
+			}
+		})
+	}
+}

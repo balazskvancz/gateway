@@ -2,15 +2,12 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-
-	"github.com/balazskvancz/gateway/pkg/mock"
 )
 
 type (
@@ -99,8 +96,11 @@ func defaultNotFoundHandler(ctx *Context) {
 }
 
 func defaultPanicHandler(ctx *Context, rec interface{}) {
-	// TODO: logging
-	fmt.Println(rec)
+	errorMsg, ok := rec.(string)
+	if !ok {
+		return
+	}
+	ctx.Error(errorMsg)
 	ctx.SendInternalServerError()
 }
 
@@ -136,11 +136,26 @@ func WithSecretKey(key string) GatewayOptionFunc {
 	}
 }
 
+func WithService(conf *ServiceConfig) GatewayOptionFunc {
+	return func(g *Gateway) {
+		if err := g.RegisterService(conf); err != nil {
+			g.logger.Warning(err.Error())
+		}
+	}
+}
+
 // NewFromConfig creates and returns a new Gateway based on
 // the given config file path. In case of any errors
 // – due to IO reading or marshal error – it returns the error also.
-func NewFromConfig(path string) (*Gateway, error) {
-	opts, err := ReadConfig(path)
+func NewFromConfig(path ...string) (*Gateway, error) {
+	finalPath := func() string {
+		if len(path) > 0 {
+			return path[0]
+		}
+		return defaultConfigPath
+	}()
+
+	opts, err := ReadConfig(finalPath)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +165,10 @@ func NewFromConfig(path string) (*Gateway, error) {
 // New returns a new instance of the gateway
 // decorated with the given opts.
 func New(opts ...GatewayOptionFunc) *Gateway {
-	channel := getContextIdChannel()
+	var (
+		channel = getContextIdChannel()
+		logger  = newGatewayLogger()
+	)
 
 	gw := &Gateway{
 		info: &GatewayInfo{
@@ -165,7 +183,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 
 		contextPool: sync.Pool{
 			New: func() interface{} {
-				return newContext(channel)
+				return newContext(channel, logger)
 			},
 		},
 
@@ -173,7 +191,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 
 		notFoundHandler: defaultNotFoundHandler,
 		panicHandler:    defaultPanicHandler,
-		logger:          newGatewayLogger(),
+		logger:          logger,
 	}
 
 	for _, o := range opts {
@@ -185,46 +203,6 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 	)
 
 	return gw
-}
-
-// ReadConfig reads the JSON config from given path,
-// then returns it as a slice of GatewayOptionFunc,
-// which can be passed into the New factory.
-// In case of unexpected behaviour, it returns error.
-func ReadConfig(path string) ([]GatewayOptionFunc, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	conf, err := parseConfig(b)
-	if err != nil {
-		return nil, err
-	}
-
-	funcs := make([]GatewayOptionFunc, 0)
-
-	if conf.Address > 0 {
-		funcs = append(funcs, WithAddress(conf.Address))
-	}
-
-	if conf.RunLevel > 0 {
-		funcs = append(funcs, WithRunLevel(conf.RunLevel))
-	}
-
-	if conf.SecretKey != "" {
-		funcs = append(funcs, WithSecretKey(conf.SecretKey))
-	}
-
-	return funcs, nil
-}
-
-func parseConfig(b []byte) (*GatewayConfig, error) {
-	conf := &GatewayConfig{}
-	if err := json.Unmarshal(b, conf); err != nil {
-		return nil, err
-	}
-	return conf, nil
 }
 
 // Start the main process for the Gateway.
@@ -240,8 +218,6 @@ func (gw *Gateway) Start() {
 		Handler: gw,
 	}
 
-	gw.methodTrees[http.MethodGet].displayTree()
-
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
 			fmt.Printf("server err: %v\n", err)
@@ -252,14 +228,13 @@ func (gw *Gateway) Start() {
 	}()
 
 	// If we running inside DEV mode, we use mock calls.
-	if !gw.isProd() {
-		mock := mock.New(gw)
-
-		// If the mock is not nil, we should watch for file change.
-		if mock != nil {
-			go mock.WatchReload()
-		}
-	}
+	// if !gw.isProd() {
+	// mock := mock.New(gw)
+	// If the mock is not nil, we should watch for file change.
+	// if mock != nil {
+	// go mock.WatchReload()
+	// }
+	// }
 
 	// Updating the status of each service.
 	go gw.serviceRegisty.updateStatus()
@@ -295,7 +270,7 @@ func (gw *Gateway) GetService(name string) (*service, error) {
 }
 
 // Listener for mocks.
-func (gw *Gateway) ListenForMocks(mocks *[]mock.MockCall) {
+func (gw *Gateway) ListenForMocks(_ *[]any) {
 	// Just in case, if its not DEV mode
 	// we should never update the mocks!
 	if gw.isProd() {
@@ -451,7 +426,6 @@ func (gw *Gateway) getMatchingHandlerFunc(ctx *Context) HandlerFunc {
 
 	// After try to forward it to specific service.
 	s := gw.serviceRegisty.findService(ctx.GetUrlWithoutQueryParams())
-
 	if s != nil {
 		return s.Handle
 	}
@@ -543,7 +517,14 @@ func (g *Gateway) areMiddlewaresEnabled() bool {
 
 func loggerMiddleware(g *Gateway) MiddlewareFunc {
 	return func(ctx *Context, next HandlerFunc) {
-		g.logger.info(string(ctx.getLog()))
+		g.logger.Info(string(ctx.getLog()))
 		next(ctx)
 	}
+}
+
+// RegisterService creates and registers a new Service to the registry
+// based on the given config. In case of validation error or duplicate
+// service, it returns error.
+func (g *Gateway) RegisterService(conf *ServiceConfig) error {
+	return g.serviceRegisty.addService(conf)
 }

@@ -29,9 +29,9 @@ type gatewayLogger struct {
 }
 
 type logger interface {
-	info(string)
-	error(string)
-	warning(string)
+	Info(string)
+	Error(string)
+	Warning(string)
 	clean()
 }
 
@@ -74,15 +74,15 @@ func newFileLogger(t fileType, prefix string, flag int) *fileLogger {
 	return l
 }
 
-func (l *gatewayLogger) info(v string) {
+func (l *gatewayLogger) Info(v string) {
 	l.write(fmt.Sprintf("[INFO] – %s\n", v), fInfo)
 }
 
-func (l *gatewayLogger) error(v string) {
+func (l *gatewayLogger) Error(v string) {
 	l.write(fmt.Sprintf("[ERROR] – %s\n", v), fError)
 }
 
-func (l *gatewayLogger) warning(v string) {
+func (l *gatewayLogger) Warning(v string) {
 	l.write(fmt.Sprintf("[WARNING] – %s\n", v), fInfo)
 }
 

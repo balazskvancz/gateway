@@ -45,19 +45,27 @@ func newHttpClient(opts ...httpClientOptionFunc) *httpClient {
 	return hc
 }
 
-func (cl *httpClient) Get(url string) (*http.Response, error) {
-	return cl.doWithTimeout(reqConfig{
-		method: http.MethodGet,
-		url:    url,
-		header: nil,
-	})
-}
-
 type reqConfig struct {
 	method string
 	url    string
 	header http.Header
 	body   io.Reader
+}
+
+func (cl *httpClient) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
+	finalHeader := func() http.Header {
+		if len(header) > 0 {
+			return header[0]
+		}
+		return http.Header{}
+	}()
+
+	return cl.doWithTimeout(reqConfig{
+		method: method,
+		url:    cl.hostName + url,
+		body:   body,
+		header: finalHeader,
+	})
 }
 
 func (cl *httpClient) pipe(req *http.Request) (*http.Response, error) {
@@ -66,14 +74,14 @@ func (cl *httpClient) pipe(req *http.Request) (*http.Response, error) {
 
 	return cl.doWithTimeout(reqConfig{
 		method: req.Method,
-		url:    req.RequestURI,
+		url:    cl.hostName + req.RequestURI,
 		header: req.Header,
 		body:   body,
 	})
 }
 
 func (cl *httpClient) doWithTimeout(conf reqConfig) (*http.Response, error) {
-	ctx, cancel := context.WithTimeout(cl.ctx, defaultClientTimeout)
+	ctx, cancel := context.WithTimeout(cl.ctx, cl.Timeout)
 	defer cancel()
 
 	return cl.do(ctx, conf)

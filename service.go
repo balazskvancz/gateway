@@ -1,13 +1,13 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/balazskvancz/gateway/pkg/communicator"
 )
 
 type serviceState uint8
@@ -23,6 +23,8 @@ const (
 
 	timeOutDur = timeOutSec * time.Second
 )
+
+var enabledProtocols = []string{"http", "https"}
 
 type ServiceConfig struct {
 	Protocol string `json:"protocol"`
@@ -40,15 +42,12 @@ type Service interface {
 
 type service struct {
 	*ServiceConfig
-	client *communicator.HttpClient
 
 	state      serviceState
 	clientPool sync.Pool
 }
 
 var _ Service = (*service)(nil)
-
-type services = *[]service
 
 func newService(conf *ServiceConfig) *service {
 	serv := &service{
@@ -65,18 +64,26 @@ func newService(conf *ServiceConfig) *service {
 	return serv
 }
 
-// Validates the given services. Returns error if
-// something is not correct.
-func validateServices(configs []*ServiceConfig) error {
-	if len(configs) == 0 {
-		return errServicesSliceIsEmpty
+// validateService validates a service by the given config.
+// It returns the first error that occured.
+func validateService(config *ServiceConfig) error {
+	if config == nil {
+		return errConfigIsNil
 	}
-
-	//
-	for _, service := range configs {
-		if len(service.Prefix) == 0 {
-			return errNoService
-		}
+	if config.Host == "" {
+		return errEmptyHost
+	}
+	if config.Name == "" {
+		return errEmptyName
+	}
+	if config.Port == "" {
+		return errEmptyPort
+	}
+	if config.Prefix == "" {
+		return errEmptyPrefix
+	}
+	if !includes(enabledProtocols, config.Protocol) {
+		return errBadProtocol
 	}
 
 	return nil
@@ -96,6 +103,7 @@ func (s *service) Handle(ctx *Context) {
 	res, err := cl.pipe(ctx.GetRequest())
 	if err != nil {
 		// todo
+		fmt.Println(err)
 		ctx.SendInternalServerError()
 		return
 	}
@@ -105,45 +113,36 @@ func (s *service) Handle(ctx *Context) {
 
 // Sending @GET request to the service.
 func (s *service) Get(url string, header ...http.Header) (*http.Response, error) {
-	if s.state != StateAvailable {
-		return nil, errServiceNotAvailable
-	}
-
-	// If there is any given
-	if len(header) > 0 {
-		s.client.SetHeader(header[0])
-	}
-
-	ch := s.client.PoolGet()
-	defer s.client.PoolPut(ch)
-
-	res, err := s.client.Get(url)
-
-	return res, err
+	return s.doRequest(http.MethodGet, url, nil, header...)
 }
 
 // Sending @POST request to the service.
 func (s *service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodPost, url, bytes.NewReader(data), header...)
+}
+
+func (s *service) PostReader(url string, data io.Reader, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodPost, url, data, header...)
+}
+
+func (s *service) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
 	if s.state != StateAvailable {
 		return nil, errServiceNotAvailable
 	}
 
-	if len(header) > 0 {
-		s.client.SetHeader(header[0])
-	}
+	cl := s.clientPool.Get().(*httpClient)
+	defer s.clientPool.Put(cl)
 
-	ch := s.client.PoolGet()
-	defer s.client.PoolPut(ch)
-
-	res, err := s.client.Post(url, data)
-
-	return res, err
+	return cl.doRequest(method, url, body, header...)
 }
 
 // checkStatus checks the status of the service.
 func (s *service) checkStatus() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeOutDur)
 	defer cancel()
+
+	cl := s.clientPool.Get().(*httpClient)
+	defer s.clientPool.Put(cl)
 
 	url := s.GetAddress() + statusPath
 
@@ -153,7 +152,7 @@ func (s *service) checkStatus() error {
 		return err
 	}
 
-	res, err := s.client.Do(req)
+	res, err := cl.Do(req)
 	if err != nil {
 		s.setState(StateRefused)
 		return err
@@ -174,8 +173,4 @@ func (s *service) setState(state serviceState) {
 
 func (s *service) GetAddress() string {
 	return fmt.Sprintf("%s://%s:%s", s.Protocol, s.Host, s.Port)
-}
-
-func (s *service) CreateClient() {
-	s.client = communicator.New(s.GetAddress(), timeOutDur)
 }

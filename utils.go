@@ -1,6 +1,9 @@
 package gateway
 
-import "reflect"
+import (
+	"reflect"
+	"strings"
+)
 
 type filterFunc[T any] func(T) bool
 
@@ -26,4 +29,27 @@ func reduce[T, K any](arr []T, fn reduceFn[K, T], initial K) K {
 
 func isNil[T any](val T) bool {
 	return reflect.ValueOf(val).IsNil()
+}
+
+func includes[T any](arr []T, el T) bool {
+	for _, e := range arr {
+		if reflect.DeepEqual(e, el) {
+			return true
+		}
+	}
+	return false
+}
+
+func getUrlParts(url string) []string {
+	strSlash := string(slash)
+	if !strings.HasPrefix(url, strSlash) {
+		url = strSlash + url
+	}
+
+	queryStart := strings.IndexRune(url, query)
+	if queryStart > 0 {
+		url = url[:queryStart]
+	}
+
+	return strings.Split(url, strSlash)[1:]
 }

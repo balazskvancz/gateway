@@ -37,7 +37,11 @@ func newRegistry(opts ...registryOptionFunc) *registry {
 }
 
 // addService adds the given service to the registry's tree.
-func (r *registry) addService(srvc *service) error {
+func (r *registry) addService(conf *ServiceConfig) error {
+	if err := validateService(conf); err != nil {
+		return err
+	}
+
 	if r == nil {
 		return errRegistryNil
 	}
@@ -47,33 +51,31 @@ func (r *registry) addService(srvc *service) error {
 		return errServiceTreeNil
 	}
 
-	if srvc == nil {
-		return errServiceNil
-	}
+	service := newService(conf)
 
-	if node := r.serviceTree.findLongestMatch(srvc.Prefix); node != nil {
+	if node := r.serviceTree.findLongestMatch(service.Prefix); node != nil {
 		return errServiceExists
 	}
 
-	return r.serviceTree.insert(srvc.Prefix, srvc)
+	return r.serviceTree.insert(service.Prefix, service)
 }
 
 // findService searches the tree based on the given url.
 func (r *registry) findService(url string) *service {
-	node := r.serviceTree.find(url)
+	node := r.serviceTree.findLongestMatch(url)
 	if node == nil {
 		return nil
 	}
-
 	return node.value
 }
 
 // getServiceByName searches for services by the given name.
 func (r *registry) getServiceByName(name string) *service {
-	node := r.serviceTree.getByPredicate(func(n *node[*service]) bool {
+	var findServicByName = func(n *node[*service]) bool {
 		return n.value.Name == name
-	})
+	}
 
+	node := r.serviceTree.getByPredicate(findServicByName)
 	if node == nil {
 		return nil
 	}

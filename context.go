@@ -12,8 +12,6 @@ import (
 	"reflect"
 	"strings"
 	"time"
-
-	"github.com/balazskvancz/gateway/pkg/utils"
 )
 
 const (
@@ -45,6 +43,7 @@ type responseWriter struct {
 }
 
 type Context struct {
+	logger
 	writer  *responseWriter
 	request *http.Request
 
@@ -56,11 +55,12 @@ type Context struct {
 }
 
 // newContext creates and returns a new context.
-func newContext(ciChan contextIdChan) *Context {
+func newContext(ciChan contextIdChan, l logger) *Context {
 	return &Context{
 		contextIdChan: ciChan,
 		params:        make([]pathParam, maxParams),
 		writer:        newResponseWriter(),
+		logger:        l,
 	}
 }
 
@@ -113,7 +113,7 @@ func (ctx *Context) GetFullUrl() string {
 
 // GetUrlParts returns the url as a slice of strings
 func (ctx *Context) GetUrlParts() []string {
-	return utils.GetUrlParts(ctx.GetFullUrl())
+	return getUrlParts(ctx.GetFullUrl())
 }
 
 // GetUrlWithoutQueryParams returns the url

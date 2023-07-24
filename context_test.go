@@ -59,7 +59,7 @@ func TestBasicRequest(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := newContext(getContextIdChannel())
+			ctx := newContext(getContextIdChannel(), nil)
 			ctx.reset(nil, tc.req)
 
 			if ctx.GetRequestMethod() != tc.expectedMethod {
@@ -116,7 +116,7 @@ func TestSendJson(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := newContext(getContextIdChannel())
+			ctx := newContext(getContextIdChannel(), nil)
 			ctx.reset(nil, nil)
 
 			ctx.SendJson(tc.data)
@@ -149,7 +149,7 @@ func TestSendNotFound(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := newContext(getContextIdChannel())
+			ctx := newContext(getContextIdChannel(), nil)
 			ctx.reset(nil, nil)
 
 			ctx.SendNotFound()
@@ -174,7 +174,7 @@ func TestSendOk(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := newContext(getContextIdChannel())
+			ctx := newContext(getContextIdChannel(), nil)
 			ctx.reset(nil, nil)
 
 			ctx.SendOk()
