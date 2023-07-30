@@ -18,45 +18,42 @@ type (
 	PanicHandlerFunc func(*Context, interface{})
 
 	GatewayOptionFunc func(*Gateway)
-)
 
-const (
-	defaultAddress = 8000
+	runLevel uint8
 )
 
 var (
 	defaultContext = context.Background()
 )
 
-type runLevel uint8
+const (
+	defaultAddress = 8000
+
+	routeSystemInfo         = "/api/system/services/info"
+	routeUpdateServiceState = "/api/system/services/update"
+)
 
 const (
 	lvlDev     runLevel = 1 << iota // 1
 	lvlProd                         // 2
 	mwDisabled                      // 4
 	mwEnabled                       // 8
-)
 
-const (
-	routeSystemInfo         = "/api/system/services/info"
-	routeUpdateServiceState = "/api/system/services/update"
+	defaultStartLevel = lvlProd + mwEnabled
 )
 
 type GatewayInfo struct {
 	// Listening Address for incming HTTP/1* connections.
-	Address int `json:"address"`
+	address int
 
 	//
-	RunLevel runLevel `json:"runLevel"`
+	runLevel runLevel
 
-	SecretKey string `json:"secretKey"`
+	// The secret key which is used to authenticate amongst services.
+	secretKey string
 
+	// The time when the Gateway instance was booted up.
 	startTime time.Time
-}
-
-type GatewayConfig struct {
-	*GatewayInfo
-	Services []*ServiceConfig `json:"services"`
 }
 
 type Gateway struct {
@@ -129,19 +126,29 @@ func getContextIdChannel() contextIdChan {
 
 func WithAddress(address int) GatewayOptionFunc {
 	return func(g *Gateway) {
-		g.info.Address = address
+		g.info.address = address
 	}
 }
 
-func WithRunLevel(lvl runLevel) GatewayOptionFunc {
+func WithMiddlewaresEnabled(val runLevel) GatewayOptionFunc {
+	var a runLevel = (runLevel)(val+1) << 2
+
 	return func(g *Gateway) {
-		g.info.RunLevel = lvl
+		g.info.runLevel += a
+	}
+}
+
+func WithProductionLevel(val runLevel) GatewayOptionFunc {
+	var a runLevel = (runLevel)(val + 1)
+
+	return func(g *Gateway) {
+		g.info.runLevel += a
 	}
 }
 
 func WithSecretKey(key string) GatewayOptionFunc {
 	return func(g *Gateway) {
-		g.info.SecretKey = key
+		g.info.secretKey = key
 	}
 }
 
@@ -181,9 +188,9 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 
 	gw := &Gateway{
 		info: &GatewayInfo{
-			Address:   defaultAddress,
-			RunLevel:  lvlDev,
+			address:   defaultAddress,
 			startTime: time.Now(),
+			runLevel:  defaultStartLevel,
 		},
 
 		ctx:         defaultContext,
@@ -215,7 +222,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlewarePostRunner,
 	)
 
-	gw.Post(routeSystemInfo, getServiceStateHandler(gw)).
+	gw.Post(routeSystemInfo, getSystemInfoHandler(gw)).
 		registerMiddleware(validateIncomingRequest(gw, func(b []byte) (any, error) { return nil, nil }))
 
 	gw.Post(routeUpdateServiceState, serviceStateUpdateHandler(gw)).
@@ -233,9 +240,14 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 // It listens until it receives the signal to close it.
 // This method sutable for graceful shutdown.
 func (gw *Gateway) Start() {
-	addr := fmt.Sprintf(":%d", gw.info.Address)
-	// Change to logger.
-	fmt.Printf("The gateway started at %s\n", addr)
+	addr := fmt.Sprintf(":%d", gw.info.address)
+
+	gw.logger.Info(
+		fmt.Sprintf("The gateway started at %s\tProduction: %t\tMiddlewares enabled: %t",
+			addr,
+			gw.isProd(),
+			gw.areMiddlewaresEnabled()),
+	)
 
 	srv := http.Server{
 		Addr:    addr,
@@ -244,7 +256,7 @@ func (gw *Gateway) Start() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
-			fmt.Printf("server err: %v\n", err)
+			gw.logger.Error(fmt.Sprintf("server listen and serve error: %v", err))
 
 			os.Exit(2)
 		}
@@ -267,11 +279,11 @@ func (gw *Gateway) Start() {
 	gw.logger.clean()
 
 	if err := srv.Shutdown(gw.ctx); err != nil {
-		fmt.Printf("[GATEWAY]: shutdown err: %v\n", err)
+		gw.logger.Error(fmt.Sprintf("shutdown err: %v", err))
 		os.Exit(1)
 	}
 
-	fmt.Println("[GATEWAY]: the server stopped.")
+	gw.logger.Info("the gateway stopped")
 }
 
 // GetService searches for a service by its name.
@@ -353,13 +365,13 @@ func (gw *Gateway) getOrCreateMethodTree(method string) *tree[*Route] {
 }
 
 func (gw *Gateway) addRoute(method, url string, handler HandlerFunc) *Route {
-	route := newRoute(url, handler)
-
-	tree := gw.getOrCreateMethodTree(method)
+	var (
+		route = newRoute(url, handler)
+		tree  = gw.getOrCreateMethodTree(method)
+	)
 
 	if err := tree.insert(url, route); err != nil {
-		fmt.Println(err)
-		// todo logging
+		gw.logger.Warning(fmt.Sprintf("inserting a route with method %s and url %s. Error: %v", method, url, err))
 		return nil
 	}
 
@@ -436,7 +448,10 @@ func (gw *Gateway) getMatchingHandlerFunc(ctx *Context) HandlerFunc {
 	// If we have some explicit match, then we have to
 	// execute its mwchain.
 	if route := gw.findNamedRoute(ctx); route != nil {
-		return route.getChain()
+		if gw.areMiddlewaresEnabled() {
+			return route.getChain()
+		}
+		return route.getHandler()
 	}
 
 	// After try to forward it to specific service.
@@ -478,16 +493,14 @@ func (g *Gateway) filterMatchingMiddlewares(ctx *Context) *matchingMiddleware {
 		post: make([]Middleware, 0),
 	}
 
-	if !g.areMiddlewaresEnabled() {
-		return mm
-	}
+	areEnabled := g.areMiddlewaresEnabled()
 
 	reduce(g.middlewares, func(acc *matchingMiddleware, curr Middleware) *matchingMiddleware {
 		if !curr.DoesMatch(ctx) {
 			return acc
 		}
 
-		if curr.IsPreRunner() {
+		if curr.IsPreRunner() && areEnabled {
 			acc.pre = append(acc.pre, curr)
 			return acc
 		}
@@ -522,12 +535,12 @@ func (mm *matchingMiddleware) getHandler(handler HandlerFunc) HandlerFunc {
 
 // isProd returns whether the the GW is running in production env.
 func (g *Gateway) isProd() bool {
-	return g.info.RunLevel&lvlProd == lvlProd
+	return g.info.runLevel&lvlProd == lvlProd
 }
 
 // areMiddlewaresEnabled returns whether the the middlewares are enabled.
 func (g *Gateway) areMiddlewaresEnabled() bool {
-	return g.info.RunLevel&mwEnabled == mwEnabled
+	return g.info.runLevel&mwEnabled == mwEnabled
 }
 
 func loggerMiddleware(g *Gateway) MiddlewareFunc {

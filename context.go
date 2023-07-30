@@ -60,6 +60,8 @@ type Context struct {
 	startTime     time.Time
 }
 
+type contextKey string
+
 // newContext creates and returns a new context.
 func newContext(ciChan contextIdChan, l logger) *Context {
 	return &Context{
@@ -110,12 +112,12 @@ func (ctx *Context) GetRequestMethod() string {
 	return ctx.request.Method
 }
 
-func (ctx *Context) BindValue(key, value any) {
+func (ctx *Context) BindValue(key contextKey, value any) {
 	contextWithValue := context.WithValue(ctx.ctx, key, value)
 	ctx.ctx = contextWithValue
 }
 
-func (ctx *Context) GetValue(key any) any {
+func (ctx *Context) GetValue(key contextKey) any {
 	return ctx.ctx.Value(key)
 }
 

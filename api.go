@@ -1,8 +1,7 @@
 package gateway
 
 import (
-	"context"
-	"fmt"
+	"reflect"
 )
 
 type ServiceInfo struct {
@@ -12,6 +11,9 @@ type ServiceInfo struct {
 
 type infoResponse struct {
 	TotalConnectionService uint64         `json:"totalConnectionServed"`
+	IsProd                 bool           `json:"isProd"`
+	AreMiddlewaresEnabled  bool           `json:"areMiddlewaresEnabled"`
+	Uptime                 string         `json:"uptime"`
 	Services               []*ServiceInfo `json:"services"`
 }
 
@@ -26,6 +28,7 @@ const (
 
 type decodeFunction func([]byte) (any, error)
 
+// validateIncomingRequest validates all the incoming requests by its header key.
 func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
 	return func(ctx *Context, next HandlerFunc) {
 		b, err := ctx.GetRawBody()
@@ -36,12 +39,10 @@ func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
 
 		var (
 			key   = ctx.GetRequestHeader(X_GW_HEADER_KEY)
-			plain = append(b, []byte(g.info.SecretKey)...)
+			plain = append(b, []byte(g.info.secretKey)...)
 		)
 
-		if h := createHash(plain); h != key {
-			fmt.Println(h)
-			fmt.Println("nincs kulcs xd.")
+		if h := createHash(plain); reflect.DeepEqual(h, []byte(key)) {
 			ctx.SendUnauthorized()
 			return
 		}
@@ -57,9 +58,10 @@ func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
 	}
 }
 
+// serviceStateUpdateHandler returns a HandlerFunc which will update the corresponding service's state.
 func serviceStateUpdateHandler(g *Gateway) HandlerFunc {
 	return func(ctx *Context) {
-		inc, err := getFromContext[*updateServiceStateRequest](ctx.ctx, IncomingDecodedKey)
+		inc, err := getValueFromContext[*updateServiceStateRequest](ctx.ctx, IncomingDecodedKey)
 		if err != nil {
 			ctx.SendUnauthorized()
 			return
@@ -75,16 +77,10 @@ func serviceStateUpdateHandler(g *Gateway) HandlerFunc {
 	}
 }
 
-func getFromContext[T any](ctx context.Context, key string) (T, error) {
-	val, ok := ctx.Value(key).(T)
-	if !ok {
-		var def T
-		return def, fmt.Errorf("cant parse from key: %s", key)
-	}
-	return val, nil
-}
-
-func getServiceStateHandler(g *Gateway) HandlerFunc {
+// getSystemInfoHandler returns a response with the Gateway's info.
+// Currently it only returns the slice of registered services – with all its info –
+// the system's uptime and the count of served connections so far.
+func getSystemInfoHandler(g *Gateway) HandlerFunc {
 	return func(ctx *Context) {
 		services := g.serviceRegisty.getAllServices()
 
@@ -100,6 +96,9 @@ func getServiceStateHandler(g *Gateway) HandlerFunc {
 		res := &infoResponse{
 			TotalConnectionService: ctx.contextId,
 			Services:               info,
+			IsProd:                 g.isProd(),
+			AreMiddlewaresEnabled:  g.areMiddlewaresEnabled(),
+			Uptime:                 getElapsedTime(g.info.startTime),
 		}
 
 		ctx.SendJson(res)

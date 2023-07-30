@@ -90,7 +90,9 @@ func (l *gatewayLogger) write(t string, fType fileType) {
 	l.Printf(t)
 	fileLogger, exits := l.fileLoggers[fType]
 	if !exits {
-		return
+		newFileLogger := newFileLogger(fType, logPrefix, defaultLogFlag)
+		l.fileLoggers[fType] = newFileLogger
+		fileLogger = newFileLogger
 	}
 	fileLogger.write(t)
 }
@@ -137,7 +139,7 @@ func getFile(ty fileType) *os.File {
 		fpath = path.Join("logs", fname)
 	)
 
-	f, err := os.Open(fpath)
+	f, err := os.OpenFile(fpath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err == nil {
 		return f
 	}

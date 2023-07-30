@@ -19,17 +19,15 @@ func removeQueryParts(url string) string {
 }
 
 type Route struct {
-	fullUrl           string
-	middlewareEnabled bool
+	fullUrl string
 
 	chain []HandlerFunc
 }
 
 func newRoute(url string, fn HandlerFunc) *Route {
 	return &Route{
-		fullUrl:           url,
-		middlewareEnabled: true,
-		chain:             []HandlerFunc{fn},
+		fullUrl: url,
+		chain:   []HandlerFunc{fn},
 	}
 }
 
@@ -65,18 +63,8 @@ func (route *Route) RegisterMiddlewares(mws ...MiddlewareFunc) *Route {
 }
 
 func (route *Route) getChain() HandlerFunc {
-	if route.middlewareEnabled {
-		return route.chain[0]
-	}
-	return route.getHandler()
+	return route.chain[0]
 }
-
-// run executes a route's middleware chain. If middlewares are disabled on
-// the specific route, it will only execute the handler itself.
-// func (route *Route) run(ctx *Context) {
-// chain := route.getChain()
-// chain(ctx)
-// }
 
 // getHandler returns the actual handler, which is at the end of the chain.
 func (route *Route) getHandler() HandlerFunc {
@@ -99,6 +87,7 @@ func getPathParams(storedUrl, incomingUrl string) []pathParam {
 		// The length of these two MUST be equal.
 		storedSplitted   = strings.Split(storedUrl, string(slash))
 		incomingSplitted = strings.Split(incomingUrl, string(slash))
+		counter          = 0
 	)
 
 	// However, we trust no one, so one last check.
@@ -115,7 +104,8 @@ func getPathParams(storedUrl, incomingUrl string) []pathParam {
 				value: incomingSplitted[i],
 			}
 
-			params = append(params, param)
+			params[counter] = param
+			counter++
 		}
 	}
 

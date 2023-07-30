@@ -29,4 +29,7 @@ var (
 
 	errNotJsonContentType = errors.New("[context]: incoming body is not application/json")
 	errDataMustBePtr      = errors.New("[context]: data must be a pointer")
+
+	errContextIsNil             = errors.New("given context is nil")
+	errKeyInContextIsNotPresent = errors.New("the key is not stored in the given context")
 )

@@ -9,10 +9,11 @@ const (
 	defaultConfigPath = "./config.json"
 )
 
-type Config struct {
-	Address  int   `json:"address"`
-	IsProd   bool  `json:"isProd"`
-	SleepMin uint8 `json:"sleepMin"`
+type GatewayConfig struct {
+	Address            int       `json:"address"`
+	MiddlewaresEnabled *runLevel `json:"middlewaresEnabled"`
+	ProductionLevel    *runLevel `json:"productionLevel"`
+	SecretKey          string    `json:"secretKey"`
 
 	Services []*ServiceConfig `json:"services"`
 }
@@ -38,16 +39,20 @@ func ReadConfig(path string) ([]GatewayOptionFunc, error) {
 		funcs = append(funcs, WithAddress(conf.Address))
 	}
 
-	if conf.RunLevel > 0 {
-		funcs = append(funcs, WithRunLevel(conf.RunLevel))
-	}
-
 	if conf.SecretKey != "" {
 		funcs = append(funcs, WithSecretKey(conf.SecretKey))
 	}
 
 	for _, conf := range conf.Services {
 		funcs = append(funcs, WithService(conf))
+	}
+
+	if conf.MiddlewaresEnabled != nil {
+		funcs = append(funcs, WithMiddlewaresEnabled(*conf.MiddlewaresEnabled))
+	}
+
+	if conf.ProductionLevel != nil {
+		funcs = append(funcs, WithProductionLevel(*conf.ProductionLevel))
 	}
 
 	return funcs, nil
