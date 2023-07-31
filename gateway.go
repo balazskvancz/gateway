@@ -482,11 +482,6 @@ func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gw.contextPool.Put(ctx)
 }
 
-type matchingMiddleware struct {
-	pre  middlewareChain
-	post middlewareChain
-}
-
 func (g *Gateway) filterMatchingMiddlewares(ctx *Context) *matchingMiddleware {
 	mm := &matchingMiddleware{
 		pre:  make([]Middleware, 0),
@@ -500,8 +495,10 @@ func (g *Gateway) filterMatchingMiddlewares(ctx *Context) *matchingMiddleware {
 			return acc
 		}
 
-		if curr.IsPreRunner() && areEnabled {
-			acc.pre = append(acc.pre, curr)
+		if curr.IsPreRunner() {
+			if areEnabled {
+				acc.pre = append(acc.pre, curr)
+			}
 			return acc
 		}
 
@@ -516,23 +513,6 @@ func writeToResponseMiddleware(ctx *Context) {
 	ctx.writer.writeToResponse()
 }
 
-func (mm *matchingMiddleware) getHandler(handler HandlerFunc) HandlerFunc {
-	postChain := mm.post.createChain(writeToResponseMiddleware)
-
-	// Wrap the given HandlerFunc inside a MW func, which calls
-	// the first element of the post chain.
-	handlerMw := func(ctx *Context) {
-		handler(ctx)
-		if len(postChain) > 0 {
-			postChain[0](ctx)
-		}
-	}
-
-	preChain := mm.pre.createChain(handlerMw)
-
-	return preChain[0]
-}
-
 // isProd returns whether the the GW is running in production env.
 func (g *Gateway) isProd() bool {
 	return g.info.runLevel&lvlProd == lvlProd
@@ -545,6 +525,7 @@ func (g *Gateway) areMiddlewaresEnabled() bool {
 
 func loggerMiddleware(g *Gateway) MiddlewareFunc {
 	return func(ctx *Context, next HandlerFunc) {
+		fmt.Println("meg lettem hívva – logger")
 		g.logger.Info(string(ctx.getLog()))
 		next(ctx)
 	}

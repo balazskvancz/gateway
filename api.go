@@ -22,8 +22,8 @@ type updateServiceStateRequest struct {
 }
 
 const (
-	IncomingDecodedKey = "incomingDecoded"
-	X_GW_HEADER_KEY    = "X-GATEWAY-KEY"
+	IncomingDecodedKey contextKey = "incomingDecoded"
+	X_GW_HEADER_KEY    string     = "X-GATEWAY-KEY"
 )
 
 type decodeFunction func([]byte) (any, error)
