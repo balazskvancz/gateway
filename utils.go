@@ -107,10 +107,18 @@ const (
 	day = time.Hour * 24
 )
 
-func getElapsedTime(t time.Time) string {
+const (
+	badTimesGiven = "the now time is before than since time"
+)
+
+func getElapsedTime(since, now time.Time) string {
 	var timeString = ""
 
-	elapsed := time.Since(t)
+	elapsed := now.Sub(since)
+
+	if elapsed.Milliseconds() < 0 {
+		return badTimesGiven
+	}
 
 	if days := elapsed / day; days > 0 {
 		timeString += fmt.Sprintf("%d days ", days)

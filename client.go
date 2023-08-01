@@ -13,7 +13,7 @@ const (
 	defaultClientTimeout time.Duration = 3000 * time.Millisecond
 )
 
-type httpClient struct {
+type client struct {
 	ctx context.Context
 	*http.Client
 
@@ -21,17 +21,23 @@ type httpClient struct {
 	hostName string
 }
 
-type httpClientOptionFunc func(*httpClient)
+type httpClient interface {
+	doRequest(string, string, io.Reader, ...http.Header) (*http.Response, error)
+	pipe(*http.Request) (*http.Response, error)
+	Do(*http.Request) (*http.Response, error)
+}
+
+type httpClientOptionFunc func(*client)
 
 func withHostName(hname string) httpClientOptionFunc {
-	return func(hc *httpClient) {
+	return func(hc *client) {
 		hc.hostName = hname
 	}
 }
 
 // newHttpClient returns a new client.
-func newHttpClient(opts ...httpClientOptionFunc) *httpClient {
-	hc := &httpClient{
+func newHttpClient(opts ...httpClientOptionFunc) httpClient {
+	hc := &client{
 		Client: &http.Client{
 			Timeout: defaultClientTimeout,
 		},
@@ -52,7 +58,7 @@ type reqConfig struct {
 	body   io.Reader
 }
 
-func (cl *httpClient) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
+func (cl *client) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
 	finalHeader := func() http.Header {
 		if len(header) > 0 {
 			return header[0]
@@ -68,7 +74,7 @@ func (cl *httpClient) doRequest(method string, url string, body io.Reader, heade
 	})
 }
 
-func (cl *httpClient) pipe(req *http.Request) (*http.Response, error) {
+func (cl *client) pipe(req *http.Request) (*http.Response, error) {
 	body := req.Body
 	defer body.Close()
 
@@ -80,14 +86,14 @@ func (cl *httpClient) pipe(req *http.Request) (*http.Response, error) {
 	})
 }
 
-func (cl *httpClient) doWithTimeout(conf reqConfig) (*http.Response, error) {
+func (cl *client) doWithTimeout(conf reqConfig) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(cl.ctx, cl.Timeout)
 	defer cancel()
 
 	return cl.do(ctx, conf)
 }
 
-func (cl *httpClient) do(ctx context.Context, conf reqConfig) (*http.Response, error) {
+func (cl *client) do(ctx context.Context, conf reqConfig) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, conf.method, conf.url, conf.body)
 	if err != nil {
 		return nil, err

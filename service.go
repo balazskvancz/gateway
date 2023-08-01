@@ -104,13 +104,14 @@ func (s *service) Handle(ctx *Context) {
 		return
 	}
 
-	cl := s.clientPool.Get().(*httpClient)
+	cl := s.clientPool.Get().(httpClient)
 	defer s.clientPool.Put(cl)
 
 	res, err := cl.pipe(ctx.GetRequest())
 	if err != nil {
 		s.setState(StateRefused)
-		fmt.Println(err)
+		// [TODO]: Change it to logger.
+		// fmt.Println(err)
 		ctx.SendInternalServerError()
 		return
 	}
@@ -137,7 +138,7 @@ func (s *service) doRequest(method string, url string, body io.Reader, header ..
 		return nil, errServiceNotAvailable
 	}
 
-	cl := s.clientPool.Get().(*httpClient)
+	cl := s.clientPool.Get().(httpClient)
 	defer s.clientPool.Put(cl)
 
 	return cl.doRequest(method, url, body, header...)
@@ -148,7 +149,7 @@ func (s *service) checkStatus() error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeOutDur)
 	defer cancel()
 
-	cl := s.clientPool.Get().(*httpClient)
+	cl := s.clientPool.Get().(httpClient)
 	defer s.clientPool.Put(cl)
 
 	url := s.GetAddress() + statusPath

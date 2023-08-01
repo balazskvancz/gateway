@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"reflect"
+	"time"
 )
 
 type ServiceInfo struct {
@@ -98,7 +99,7 @@ func getSystemInfoHandler(g *Gateway) HandlerFunc {
 			Services:               info,
 			IsProd:                 g.isProd(),
 			AreMiddlewaresEnabled:  g.areMiddlewaresEnabled(),
-			Uptime:                 getElapsedTime(g.info.startTime),
+			Uptime:                 getElapsedTime(g.info.startTime, time.Now()),
 		}
 
 		ctx.SendJson(res)

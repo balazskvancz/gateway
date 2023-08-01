@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestFilter(t *testing.T) {
@@ -277,7 +278,11 @@ func TestGetValueFromContext(t *testing.T) {
 		{
 			name: "the function returns default value for the type if the key is not present",
 			getCtx: func(t *testing.T) context.Context {
-				return context.WithValue(context.Background(), "foo", "bar")
+				type testCtxKey string
+
+				var key testCtxKey = "foo"
+
+				return context.WithValue(context.Background(), key, "bar")
 			},
 			expected:    "",
 			expectedErr: errKeyInContextIsNotPresent,
@@ -306,6 +311,92 @@ func TestGetValueFromContext(t *testing.T) {
 				t.Errorf("expected error: %v; got error: %v\n", tc.expectedErr, err)
 			}
 		})
+	}
+}
 
+func TestGetElapsedTime(t *testing.T) {
+	type testCase struct {
+		name     string
+		since    time.Time
+		now      time.Time
+		expected string
+	}
+
+	tt := []testCase{
+		{
+			name:     "function returns error string if the now time is before since time",
+			since:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			now:      time.Date(2023, 1, 1, 7, 0, 0, 0, time.UTC),
+			expected: badTimesGiven,
+		},
+
+		{
+			name:     "function returns `0s` if there is no elapsed time",
+			since:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			now:      time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			expected: "0s",
+		},
+		{
+			name:     "function returns the proper elapsed time (only seconds)",
+			since:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			now:      time.Date(2023, 1, 1, 12, 0, 15, 0, time.UTC),
+			expected: "15s",
+		},
+		{
+			name:     "function returns the proper elapsed time (minutes and seconds)",
+			since:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			now:      time.Date(2023, 1, 1, 12, 5, 24, 0, time.UTC),
+			expected: "5 minutes 24s",
+		},
+		{
+			name:     "function returns the proper elapsed time (hours, minutes and seconds)",
+			since:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			now:      time.Date(2023, 1, 1, 14, 5, 24, 0, time.UTC),
+			expected: "2 hours 5 minutes 24s",
+		},
+		{
+			name:     "function returns the proper elapsed time (days, hours, minutes and seconds)",
+			since:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+			now:      time.Date(2023, 1, 23, 14, 5, 24, 0, time.UTC),
+			expected: "22 days 2 hours 5 minutes 24s",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := getElapsedTime(tc.since, tc.now)
+
+			if got != tc.expected {
+				t.Errorf("expected result: %s; got result: %s\n", tc.expected, got)
+			}
+		})
+	}
+}
+
+func TestCreateHash(t *testing.T) {
+	type testCase struct {
+		input    []byte
+		expected []byte
+	}
+
+	var tt = []testCase{
+		{
+			input:    []byte("mock-test-1"),
+			expected: []byte("1613ace6d16db2ec3ccd55a85d4125f3a83b5315b961b14fe6e50951d9551b54"),
+		},
+		{
+			input:    []byte("api-gateway-2022"),
+			expected: []byte("e31cb50b87d55d14e6c18561075cba2cc22cdd0a8ce10d1dd167a3adbd08224c"),
+		},
+		{
+			input:    []byte("1"),
+			expected: []byte("6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"),
+		},
+	}
+
+	for _, tc := range tt {
+		if output := createHash(tc.input); !reflect.DeepEqual(output, tc.expected) {
+			t.Errorf("expected: %s got: %s\n", string(tc.expected), string(output))
+		}
 	}
 }
