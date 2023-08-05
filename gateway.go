@@ -54,6 +54,8 @@ type GatewayInfo struct {
 
 	// The time when the Gateway instance was booted up.
 	startTime time.Time
+
+	healthCheckFrequency time.Duration
 }
 
 type Gateway struct {
@@ -160,6 +162,12 @@ func WithService(conf *ServiceConfig) GatewayOptionFunc {
 	}
 }
 
+func WithHealthCheckFrequency(t time.Duration) GatewayOptionFunc {
+	return func(g *Gateway) {
+		g.info.healthCheckFrequency = t
+	}
+}
+
 // NewFromConfig creates and returns a new Gateway based on
 // the given config file path. In case of any errors
 // – due to IO reading or marshal error – it returns the error also.
@@ -188,18 +196,16 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 
 	gw := &Gateway{
 		info: &GatewayInfo{
-			address:   defaultAddress,
-			startTime: time.Now(),
-			runLevel:  defaultStartLevel,
+			address:              defaultAddress,
+			startTime:            time.Now(),
+			runLevel:             defaultStartLevel,
+			healthCheckFrequency: defaultHealthCheckFreq,
 		},
 
 		ctx:         defaultContext,
 		methodTrees: make(map[string]*tree[*Route]),
 
-		serviceRegisty: newRegistry(
-			withLogger(logger),
-			withHealthCheck(defaultHealthCheckFreq),
-		),
+		serviceRegisty: nil,
 
 		contextPool: sync.Pool{
 			New: func() interface{} {
@@ -217,6 +223,11 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 	for _, o := range opts {
 		o(gw)
 	}
+
+	gw.serviceRegisty = newRegistry(
+		withLogger(logger),
+		withHealthCheck(gw.info.healthCheckFrequency),
+	)
 
 	gw.RegisterMiddleware(
 		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlewarePostRunner,

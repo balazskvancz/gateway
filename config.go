@@ -2,7 +2,10 @@ package gateway
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
+	"time"
 )
 
 const (
@@ -10,12 +13,47 @@ const (
 )
 
 type GatewayConfig struct {
-	Address            int       `json:"address"`
-	MiddlewaresEnabled *runLevel `json:"middlewaresEnabled"`
-	ProductionLevel    *runLevel `json:"productionLevel"`
-	SecretKey          string    `json:"secretKey"`
+	Address             int       `json:"address"`
+	MiddlewaresEnabled  *runLevel `json:"middlewaresEnabled"`
+	ProductionLevel     *runLevel `json:"productionLevel"`
+	SecretKey           string    `json:"secretKey"`
+	HealthCheckInterval string    `json:"healthCheckInternal"`
 
 	Services []*ServiceConfig `json:"services"`
+}
+
+type duration byte
+
+const (
+	durationSecond duration = 's'
+	durationMinute duration = 'm'
+)
+
+func getHealthCheckInterval(t string) time.Duration {
+	if t == "" {
+		return 0
+	}
+
+	var (
+		val = t[:len(t)-1]
+		d   = t[len(t)-1]
+	)
+
+	timeValue, err := strconv.Atoi(val)
+	if err != nil {
+		fmt.Println(err)
+		return 0
+	}
+
+	if d == byte(durationMinute) {
+		return time.Minute * time.Duration(timeValue)
+	}
+
+	if d == byte(durationSecond) {
+		return time.Second * time.Duration(timeValue)
+	}
+
+	return 0
 }
 
 // ReadConfig reads the JSON config from given path,
@@ -33,6 +71,12 @@ func ReadConfig(path string) ([]GatewayOptionFunc, error) {
 		return nil, err
 	}
 
+	funcs := getGatewayOptionFuncs(conf)
+
+	return funcs, nil
+}
+
+func getGatewayOptionFuncs(conf *GatewayConfig) []GatewayOptionFunc {
 	funcs := make([]GatewayOptionFunc, 0)
 
 	if conf.Address > 0 {
@@ -55,7 +99,11 @@ func ReadConfig(path string) ([]GatewayOptionFunc, error) {
 		funcs = append(funcs, WithProductionLevel(*conf.ProductionLevel))
 	}
 
-	return funcs, nil
+	if configInterval := getHealthCheckInterval(conf.HealthCheckInterval); configInterval != 0 {
+		funcs = append(funcs, WithHealthCheckFrequency(configInterval))
+	}
+
+	return funcs
 }
 
 func parseConfig(b []byte) (*GatewayConfig, error) {
