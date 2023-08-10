@@ -87,7 +87,9 @@ func (ctx *Context) reset(w http.ResponseWriter, r *http.Request) {
 	ctx.startTime = time.Now()
 
 	// We set the next id from the channel.
-	ctx.contextId = <-ctx.contextIdChan
+	if ctx.contextIdChan != nil {
+		ctx.contextId = <-ctx.contextIdChan
+	}
 }
 
 // empty makes the http.Request and http.ResponseWrite <nil>.

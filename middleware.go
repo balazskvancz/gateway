@@ -106,18 +106,20 @@ func (chain middlewareChain) createChain(next HandlerFunc) []HandlerFunc {
 // getHandler returns the tied middleware functions from the matching pre
 // and post middlewares with the actual handlerfunc.
 func (mm *matchingMiddleware) getHandler(handler HandlerFunc) HandlerFunc {
-	postChain := mm.post.createChain(writeToResponseMiddleware)
+	if mm == nil {
+		return handler
+	}
 
-	// Wrap the given HandlerFunc inside a MW func, which calls
-	// the first element of the post chain.
-	handlerMw := func(ctx *Context) {
-		handler(ctx)
+	var (
+		preChain  = mm.pre.createChain(handler)
+		postChain = mm.post.createChain(writeToResponseMiddleware)
+	)
+
+	return func(ctx *Context) {
+		preChain[0](ctx)
+
 		if len(postChain) > 0 {
 			postChain[0](ctx)
 		}
 	}
-
-	preChain := mm.pre.createChain(handlerMw)
-
-	return preChain[0]
 }
