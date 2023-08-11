@@ -29,30 +29,12 @@ var _PossibleUrlParts = []string{
 var toBeFound = true
 
 func BenchmarkTree(b *testing.B) {
-	tt := []struct {
-		n int
-	}{
-		{
-			n: 10,
-		},
-		{
-			n: 50,
-		},
-		{
-			n: 100,
-		},
-		{
-			n: 300,
-		},
-		{
-			n: 500,
-		},
-	}
+	tt := []int{10, 50, 100, 300, 500}
 
 	for _, tc := range tt {
 		tree := newTree[*Route]()
 
-		routes := testCreateRoutes(tc.n, []string{})
+		routes := testCreateRoutes(tc, []string{})
 
 		for _, r := range routes {
 			route := newRoute(r, nil)
@@ -62,7 +44,7 @@ func BenchmarkTree(b *testing.B) {
 			}
 		}
 
-		name := fmt.Sprintf("testing with %d routes", tc.n)
+		name := fmt.Sprintf("testing with %d routes", tc)
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

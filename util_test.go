@@ -208,11 +208,13 @@ func TestIncludes(t *testing.T) {
 }
 
 func TestGetUrlParts(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name     string
 		url      string
 		expected []string
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name:     "the function returns the parts, when normal url called",
 			url:      "/foo/bar/baz",

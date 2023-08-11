@@ -78,11 +78,17 @@ func (r *registry) findService(url string) *service {
 
 // getServiceByName searches for services by the given name.
 func (r *registry) getServiceByName(name string) *service {
-	var findServicByName = func(n *node[*service]) bool {
+	var findServiceByName = func(n *node[*service]) bool {
+		if n == nil {
+			return false
+		}
+		if n.value == nil {
+			return false
+		}
 		return n.value.Name == name
 	}
 
-	node := r.serviceTree.getByPredicate(findServicByName)
+	node := r.serviceTree.getByPredicate(findServiceByName)
 	if node == nil {
 		return nil
 	}

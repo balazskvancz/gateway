@@ -77,7 +77,6 @@ func TestRegisterMiddleware(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestRegisterMiddlewares(t *testing.T) {

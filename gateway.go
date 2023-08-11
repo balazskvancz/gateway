@@ -198,7 +198,6 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		info: &GatewayInfo{
 			address:              defaultAddress,
 			startTime:            time.Now(),
-			runLevel:             defaultStartLevel,
 			healthCheckFrequency: defaultHealthCheckFreq,
 		},
 
@@ -251,6 +250,10 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 // It listens until it receives the signal to close it.
 // This method sutable for graceful shutdown.
 func (gw *Gateway) Start() {
+	if gw.info.runLevel == 0 {
+		gw.info.runLevel = defaultStartLevel
+	}
+
 	addr := fmt.Sprintf(":%d", gw.info.address)
 
 	gw.logger.Info(
@@ -526,17 +529,16 @@ func writeToResponseMiddleware(ctx *Context) {
 
 // isProd returns whether the the GW is running in production env.
 func (g *Gateway) isProd() bool {
-	return g.info.runLevel&lvlProd == lvlProd
+	return g.info.runLevel&lvlProd != 0
 }
 
 // areMiddlewaresEnabled returns whether the the middlewares are enabled.
 func (g *Gateway) areMiddlewaresEnabled() bool {
-	return g.info.runLevel&mwEnabled == mwEnabled
+	return g.info.runLevel&mwEnabled != 0
 }
 
 func loggerMiddleware(g *Gateway) MiddlewareFunc {
 	return func(ctx *Context, next HandlerFunc) {
-		fmt.Println("meg lettem hívva – logger")
 		g.logger.Info(string(ctx.getLog()))
 		next(ctx)
 	}

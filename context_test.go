@@ -8,7 +8,7 @@ import (
 )
 
 func TestBasicRequest(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name string
 		req  *http.Request
 
@@ -16,7 +16,9 @@ func TestBasicRequest(t *testing.T) {
 		expectedUrl                   string
 		expectedUrlParts              []string
 		expectedUrlWithOutQueryParams string
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name: "http get method, without any query params",
 			req:  httptest.NewRequest(http.MethodGet, "/api/foo/bar", nil),
@@ -96,11 +98,13 @@ func TestBasicRequest(t *testing.T) {
 }
 
 func TestSendJson(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name         string
 		data         interface{}
 		expectedBody []byte
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name: "the right data was written",
 			data: struct {
@@ -139,9 +143,11 @@ func TestSendJson(t *testing.T) {
 }
 
 func TestSendNotFound(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name string
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name: "the functions sends not found",
 		},
@@ -164,9 +170,11 @@ func TestSendNotFound(t *testing.T) {
 }
 
 func TestSendOk(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name string
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name: "the functions sends ok",
 		},

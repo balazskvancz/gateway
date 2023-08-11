@@ -12,7 +12,7 @@ func getTestRoute() *Route {
 }
 
 func TestGetOffSets(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name       string
 		storedKey  string
 		searchKey  string
@@ -21,7 +21,9 @@ func TestGetOffSets(t *testing.T) {
 		expectedOffset1    int
 		expectedOffset2    int
 		expectedIsWildcard bool
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name:               "no wildcard and no match",
 			storedKey:          "foo",
@@ -127,12 +129,14 @@ func TestGetOffSets(t *testing.T) {
 }
 
 func TestTreeInsert(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name    string
 		getTree getTreeFn
 		input   string
 		err     error
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name:    "error if the tree is <nil>",
 			getTree: func(t *testing.T) *tree[*Route] { return nil },
@@ -247,12 +251,14 @@ func TestTreeInsert(t *testing.T) {
 }
 
 func TestTreeFind(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name      string
 		getTree   func(t *testing.T) *tree[*Route]
 		searchKey string
 		isExists  bool
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name:      "cant find, if tree is <nil>",
 			getTree:   func(t *testing.T) *tree[*Route] { return nil },
@@ -493,11 +499,13 @@ func TestTreeFind(t *testing.T) {
 }
 
 func TestCheckPathParams(t *testing.T) {
-	tt := []struct {
+	type testCase struct {
 		name  string
 		input string
 		err   error
-	}{
+	}
+
+	tt := []testCase{
 		{
 			name:  "no error, if there is no path params at all",
 			input: "/foo/bar/baz",
