@@ -204,7 +204,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		ctx:         defaultContext,
 		methodTrees: make(map[string]*tree[*Route]),
 
-		serviceRegisty: nil,
+		serviceRegisty: newRegistry(),
 
 		contextPool: sync.Pool{
 			New: func() interface{} {
@@ -223,10 +223,8 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		o(gw)
 	}
 
-	gw.serviceRegisty = newRegistry(
-		withLogger(logger),
-		withHealthCheck(gw.info.healthCheckFrequency),
-	)
+	gw.serviceRegisty.withHealthCheck(gw.info.healthCheckFrequency)
+	gw.serviceRegisty.withLogger(gw.logger)
 
 	gw.RegisterMiddleware(
 		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlewarePostRunner,

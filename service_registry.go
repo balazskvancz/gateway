@@ -15,32 +15,22 @@ type registry struct {
 	logger
 }
 
-type registryOptionFunc func(*registry)
-
-func withHealthCheck(freq time.Duration) registryOptionFunc {
-	return func(r *registry) {
-		r.healthCheckFrequency = freq
-	}
-}
-
-func withLogger(l logger) registryOptionFunc {
-	return func(r *registry) {
-		r.logger = l
-	}
-}
-
 // Creates a new registry with empty slice of services.
-func newRegistry(opts ...registryOptionFunc) *registry {
+func newRegistry() *registry {
 	r := &registry{
 		healthCheckFrequency: defaultHealthCheckFreq,
 		serviceTree:          newTree[*service](),
 	}
 
-	for _, o := range opts {
-		o(r)
-	}
-
 	return r
+}
+
+func (r *registry) withHealthCheck(freq time.Duration) {
+	r.healthCheckFrequency = freq
+}
+
+func (r *registry) withLogger(l logger) {
+	r.logger = l
 }
 
 // addService adds the given service to the registry's tree.
