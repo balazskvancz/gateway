@@ -1,15 +1,16 @@
 {
-  "address": 8000,
-  "isProd": false,
-  "healthCheckInternal": 2m,
+  "address": 3100,
+  "productionLevel": 0,
+  "middlewaresEnabled": 1,
+  "healthCheckInternal": "1m",
+  "secretKey": "",
   "services": [
     {
       "protocol": "http",
-      "name": "foo-name",
+      "name": "testService",
       "host": "localhost",
-      "port": "8000",
-      "prefix": "/api/foo",
-      "ctype": "json"
+      "port": "3001",
+      "prefix": "/api/test"
     }
   ]
 }
