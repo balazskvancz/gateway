@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -14,7 +13,7 @@ const (
 )
 
 type client struct {
-	ctx context.Context
+	// ctx context.Context
 	*http.Client
 
 	//
@@ -41,7 +40,6 @@ func newHttpClient(opts ...httpClientOptionFunc) httpClient {
 		Client: &http.Client{
 			Timeout: defaultClientTimeout,
 		},
-		ctx: context.Background(),
 	}
 
 	for _, o := range opts {
@@ -66,7 +64,7 @@ func (cl *client) doRequest(method string, url string, body io.Reader, header ..
 		return http.Header{}
 	}()
 
-	return cl.doWithTimeout(reqConfig{
+	return cl.do(reqConfig{
 		method: method,
 		url:    cl.hostName + url,
 		body:   body,
@@ -78,7 +76,7 @@ func (cl *client) pipe(req *http.Request) (*http.Response, error) {
 	body := req.Body
 	defer body.Close()
 
-	return cl.doWithTimeout(reqConfig{
+	return cl.do(reqConfig{
 		method: req.Method,
 		url:    cl.hostName + req.RequestURI,
 		header: req.Header,
@@ -86,15 +84,8 @@ func (cl *client) pipe(req *http.Request) (*http.Response, error) {
 	})
 }
 
-func (cl *client) doWithTimeout(conf reqConfig) (*http.Response, error) {
-	ctx, cancel := context.WithTimeout(cl.ctx, cl.Timeout)
-	defer cancel()
-
-	return cl.do(ctx, conf)
-}
-
-func (cl *client) do(ctx context.Context, conf reqConfig) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, conf.method, conf.url, conf.body)
+func (cl *client) do(conf reqConfig) (*http.Response, error) {
+	req, err := http.NewRequest(conf.method, conf.url, conf.body)
 	if err != nil {
 		return nil, err
 	}
