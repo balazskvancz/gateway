@@ -10,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/balazskvancz/rtree"
 )
 
 type (
@@ -67,7 +69,7 @@ type Gateway struct {
 	// Every HTTP Method gets a different, by default empty
 	// tree, then stored in a map, where the key is the
 	// method itself.
-	methodTrees map[string]*tree[*Route]
+	methodTrees map[string]*rtree.Tree[*Route]
 
 	// The registy which stores all the registered services.
 	serviceRegisty *registry
@@ -202,7 +204,7 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 		},
 
 		ctx:         defaultContext,
-		methodTrees: make(map[string]*tree[*Route]),
+		methodTrees: make(map[string]*rtree.Tree[*Route]),
 
 		serviceRegisty: newRegistry(),
 
@@ -363,15 +365,14 @@ func (gw *Gateway) RegisterMiddleware(fn MiddlewareFunc, matcher MatcherFunc, mw
 	return nil
 }
 
-func (gw *Gateway) getOrCreateMethodTree(method string) *tree[*Route] {
+func (gw *Gateway) getOrCreateMethodTree(method string) *rtree.Tree[*Route] {
 	tree, exists := gw.methodTrees[method]
 
 	if exists {
 		return tree
 	}
 
-	t := newTree[*Route]()
-	gw.methodTrees[method] = t
+	gw.methodTrees[method] = rtree.New[*Route]()
 
 	return gw.methodTrees[method]
 }
@@ -382,7 +383,7 @@ func (gw *Gateway) addRoute(method, url string, handler HandlerFunc) *Route {
 		tree  = gw.getOrCreateMethodTree(method)
 	)
 
-	if err := tree.insert(url, route); err != nil {
+	if err := tree.Insert(url, route); err != nil {
 		gw.logger.Warning(fmt.Sprintf("inserting a route with method %s and url %s. Error: %v", method, url, err))
 		return nil
 	}
@@ -398,21 +399,34 @@ func (gw *Gateway) findNamedRoute(ctx *Context) *Route {
 
 	url := ctx.GetUrlWithoutQueryParams()
 
-	node := tree.find(url)
+	node := tree.Find(url)
 	if isNil(node) {
 		return nil
 	}
 
-	if !node.isLeaf() {
-		return nil
-	}
+	route := node.GetValue()
 
-	route := node.value
-
-	pathParams := getPathParams(route.fullUrl, url)
+	pathParams := getPathParams(node.GetParams())
 	ctx.setParams(pathParams)
 
 	return route
+}
+
+func getPathParams(params map[string]string) []pathParam {
+	var (
+		p       = make([]pathParam, len(params))
+		counter = 0
+	)
+
+	for k, v := range params {
+		p[counter] = pathParam{
+			key:   k,
+			value: v,
+		}
+		counter++
+	}
+
+	return p
 }
 
 // serve serves the context by its HTTP method and URL.

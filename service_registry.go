@@ -3,6 +3,8 @@ package gateway
 import (
 	"fmt"
 	"time"
+
+	"github.com/balazskvancz/rtree"
 )
 
 const (
@@ -50,7 +52,7 @@ func (r *registry) addService(conf *ServiceConfig) error {
 
 	service := newService(conf)
 
-	if node := r.serviceTree.findLongestMatch(service.Prefix); node != nil {
+	if node := r.serviceTree.FindLongestMatch(service.Prefix); node != nil {
 		return errServiceExists
 	}
 
@@ -59,31 +61,31 @@ func (r *registry) addService(conf *ServiceConfig) error {
 
 // findService searches the tree based on the given url.
 func (r *registry) findService(url string) *service {
-	node := r.serviceTree.findLongestMatch(url)
+	node := r.serviceTree.FindLongestMatch(url)
 	if node == nil {
 		return nil
 	}
-	return node.value
+	return node.GetValue()
 }
 
 // getServiceByName searches for services by the given name.
 func (r *registry) getServiceByName(name string) *service {
-	var findServiceByName = func(n *node[*service]) bool {
+	var findServiceByName = func(n *rtree.Node[*service]) bool {
 		if n == nil {
 			return false
 		}
-		if n.value == nil {
+		if n.GetValue() == nil {
 			return false
 		}
-		return n.value.Name == name
+		return n.GetValue().GetValue().Name == name
 	}
 
-	node := r.serviceTree.getByPredicate(findServiceByName)
+	node := r.serviceTree.GetByPredicate(findServiceByName)
 	if node == nil {
 		return nil
 	}
 
-	return node.value
+	return node.GetValue().GetValue()
 }
 
 // Updates the status of the services, in the registry.
@@ -91,10 +93,10 @@ func (r *registry) updateStatus() {
 	t := time.NewTicker(r.healthCheckFrequency)
 
 	for {
-		nodes := r.serviceTree.getAllLeaf()
+		nodes := r.serviceTree.GetAllLeaf()
 
 		for _, n := range nodes {
-			service := n.value
+			service := n.GetValue().GetValue()
 
 			if err := service.checkStatus(); err != nil {
 				l := fmt.Sprintf("[registry] service %s – checkStatus error: %v\n", service.Name, err)
@@ -121,12 +123,12 @@ func (r *registry) setServiceAvailable(name string) {
 
 func (r *registry) getAllServices() []*service {
 	var (
-		nodes = r.serviceTree.getAllLeaf()
+		nodes = r.serviceTree.GetAllLeaf()
 		s     = make([]*service, len(nodes))
 	)
 
 	for i, node := range nodes {
-		s[i] = node.value
+		s[i] = node.GetValue().GetValue()
 	}
 	return s
 }
