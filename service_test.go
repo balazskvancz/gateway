@@ -19,24 +19,24 @@ func TestValidateService(t *testing.T) {
 
 	tt := []testCase{
 		{
-			name: "the functions returns error if the config ptr is nil",
+			name: "the function returns error if the config ptr is nil",
 			conf: nil,
 			err:  errConfigIsNil,
 		},
 		{
-			name: "the functions returns error if the host is empty",
+			name: "the function returns error if the host is empty",
 			conf: &ServiceConfig{},
 			err:  errEmptyHost,
 		},
 		{
-			name: "the functions returns error if the name is empty",
+			name: "the function returns error if the name is empty",
 			conf: &ServiceConfig{
 				Host: "mock-host",
 			},
 			err: errEmptyName,
 		},
 		{
-			name: "the functions returns error if the port is empty",
+			name: "the function returns error if the port is empty",
 			conf: &ServiceConfig{
 				Host: "mock-host",
 				Name: "mock-name",
@@ -44,7 +44,7 @@ func TestValidateService(t *testing.T) {
 			err: errEmptyPort,
 		},
 		{
-			name: "the functions returns error if the prefix is empty",
+			name: "the function returns error if the prefix is empty",
 			conf: &ServiceConfig{
 				Host: "mock-host",
 				Name: "mock-name",
@@ -53,7 +53,7 @@ func TestValidateService(t *testing.T) {
 			err: errEmptyPrefix,
 		},
 		{
-			name: "the functions returns error if the protocol is empty",
+			name: "the function returns error if the protocol is empty",
 			conf: &ServiceConfig{
 				Host:   "mock-host",
 				Name:   "mock-name",
@@ -63,7 +63,7 @@ func TestValidateService(t *testing.T) {
 			err: errBadProtocol,
 		},
 		{
-			name: "the functions returns error if the protocol is not supported",
+			name: "the function returns error if the protocol is not supported",
 			conf: &ServiceConfig{
 				Host:     "mock-host",
 				Name:     "mock-name",
@@ -74,7 +74,7 @@ func TestValidateService(t *testing.T) {
 			err: errBadProtocol,
 		},
 		{
-			name: "the functions returns nil is the config is valid",
+			name: "the function returns nil is the config is valid",
 			conf: &ServiceConfig{
 				Host:     "mock-host",
 				Name:     "mock-name",
@@ -129,7 +129,7 @@ func TestHandle(t *testing.T) {
 
 	tt := []testCase{
 		{
-			name: "the functions send HTTP 503 if the service is not available",
+			name: "the function send HTTP 503 if the service is not available",
 			getService: func(t *testing.T) *service {
 				return newService(nil)
 			},
@@ -138,7 +138,7 @@ func TestHandle(t *testing.T) {
 			expState:  StateUnknown,
 		},
 		{
-			name: "the functions send HTTP 500 if the pipe is not successful",
+			name: "the function send HTTP 500 if the pipe is not successful",
 			getService: func(t *testing.T) *service {
 				s := newService(nil)
 
@@ -161,7 +161,7 @@ func TestHandle(t *testing.T) {
 			expState:  StateRefused,
 		},
 		{
-			name: "the functions writes the body and statusCode of response from service",
+			name: "the function writes the body and statusCode of response from service",
 			getService: func(t *testing.T) *service {
 				s := newService(nil)
 
@@ -229,7 +229,7 @@ func TestChechStatus(t *testing.T) {
 
 	tt := []testCase{
 		{
-			name: "the functions returns an error the http call returns error",
+			name: "the function returns an error the http call returns error",
 			getService: func(t *testing.T) *service {
 				s := newService(&ServiceConfig{
 					Protocol: "http",
@@ -253,7 +253,7 @@ func TestChechStatus(t *testing.T) {
 			expState: StateRefused,
 		},
 		{
-			name: "the functions returns no error and sets the state to `StateRefused`",
+			name: "the function returns no error and sets the state to `StateRefused`",
 			getService: func(t *testing.T) *service {
 				s := newService(&ServiceConfig{
 					Protocol: "http",
@@ -281,7 +281,7 @@ func TestChechStatus(t *testing.T) {
 			expState: StateRefused,
 		},
 		{
-			name: "the functions returns no error and sets the state to `StateAvailable`",
+			name: "the function returns no error and sets the state to `StateAvailable`",
 			getService: func(t *testing.T) *service {
 				s := newService(&ServiceConfig{
 					Protocol: "http",

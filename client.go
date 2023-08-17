@@ -34,6 +34,12 @@ func withHostName(hname string) httpClientOptionFunc {
 	}
 }
 
+func withTimeOut(tOut time.Duration) httpClientOptionFunc {
+	return func(hc *client) {
+		hc.Client.Timeout = tOut
+	}
+}
+
 // newHttpClient returns a new client.
 func newHttpClient(opts ...httpClientOptionFunc) httpClient {
 	hc := &client{

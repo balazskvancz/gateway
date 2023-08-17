@@ -34,11 +34,12 @@ var stateTexts = map[serviceState]string{
 var enabledProtocols = []string{"http", "https"}
 
 type ServiceConfig struct {
-	Protocol string `json:"protocol"`
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     string `json:"port"`
-	Prefix   string `json:"prefix"`
+	Protocol   string `json:"protocol"`
+	Name       string `json:"name"`
+	Host       string `json:"host"`
+	Port       string `json:"port"`
+	Prefix     string `json:"prefix"`
+	TimeOutSec int    `json:"timeOutSec"`
 }
 
 type Service interface {
@@ -62,9 +63,16 @@ func newService(conf *ServiceConfig) *service {
 		ServiceConfig: conf,
 	}
 
+	duration := func() time.Duration {
+		if conf != nil && conf.TimeOutSec != 0 {
+			return time.Duration(conf.TimeOutSec) * time.Second
+		}
+		return defaultClientTimeout
+	}()
+
 	serv.clientPool = sync.Pool{
 		New: func() any {
-			return newHttpClient(withHostName(serv.GetAddress()))
+			return newHttpClient(withHostName(serv.GetAddress()), withTimeOut(duration))
 		},
 	}
 

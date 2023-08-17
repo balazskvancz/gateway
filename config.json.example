@@ -2,7 +2,7 @@
   "address": 3100,
   "productionLevel": 0,
   "middlewaresEnabled": 1,
-  "healthCheckInternal": "1m",
+  "healthCheckInterval": "1m",
   "secretKey": "",
   "services": [
     {
@@ -10,7 +10,8 @@
       "name": "testService",
       "host": "localhost",
       "port": "3001",
-      "prefix": "/api/test"
+      "prefix": "/api/test",
+      "timeOutSec": 5
     }
   ]
 }

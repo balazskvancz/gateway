@@ -12,12 +12,17 @@ const (
 	defaultConfigPath = "./config.json"
 )
 
+type LoggerConfig struct {
+}
+
 type GatewayConfig struct {
-	Address             int       `json:"address"`
-	MiddlewaresEnabled  *runLevel `json:"middlewaresEnabled"`
-	ProductionLevel     *runLevel `json:"productionLevel"`
-	SecretKey           string    `json:"secretKey"`
-	HealthCheckInterval string    `json:"healthCheckInternal"`
+	Address             int           `json:"address"`
+	MiddlewaresEnabled  *runLevel     `json:"middlewaresEnabled"`
+	ProductionLevel     *runLevel     `json:"productionLevel"`
+	SecretKey           string        `json:"secretKey"`
+	HealthCheckInterval string        `json:"healthCheckInterval"`
+	TimeOutSec          int           `json:"timeOutSec"`
+	LoggerConfig        *LoggerConfig `json:"loggerConfig"`
 
 	Services []*ServiceConfig `json:"services"`
 }
