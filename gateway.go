@@ -170,6 +170,12 @@ func WithHealthCheckFrequency(t time.Duration) GatewayOptionFunc {
 	}
 }
 
+func WithDisabledLoggers(disabled logTypeValue) GatewayOptionFunc {
+	return func(g *Gateway) {
+		g.logger.disable(disabled)
+	}
+}
+
 // NewFromConfig creates and returns a new Gateway based on
 // the given config file path. In case of any errors
 // – due to IO reading or marshal error – it returns the error also.

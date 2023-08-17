@@ -13,6 +13,7 @@ const (
 )
 
 type LoggerConfig struct {
+	DisabledLoggers []logTypeName `json:"disabledLoggers"`
 }
 
 type GatewayConfig struct {
@@ -106,6 +107,18 @@ func getGatewayOptionFuncs(conf *GatewayConfig) []GatewayOptionFunc {
 
 	if configInterval := getHealthCheckInterval(conf.HealthCheckInterval); configInterval != 0 {
 		funcs = append(funcs, WithHealthCheckFrequency(configInterval))
+	}
+
+	if conf.LoggerConfig != nil {
+		var value logTypeValue = 0
+		for _, e := range conf.LoggerConfig.DisabledLoggers {
+			val, ok := logLevelValues[e]
+			if !ok {
+				continue
+			}
+			value += val
+		}
+		funcs = append(funcs, WithDisabledLoggers(value))
 	}
 
 	return funcs

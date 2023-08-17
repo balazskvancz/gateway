@@ -9,12 +9,34 @@ import (
 	"time"
 )
 
-type fileType string
+type (
+	fileType     string
+	logTypeName  string
+	logTypeValue uint8
+)
 
 const (
 	fInfo  fileType = "info"
 	fError fileType = "error"
+
+	tInfo    logTypeName = "info"
+	tWarning logTypeName = "warning"
+	tError   logTypeName = "error"
 )
+
+const (
+	vInfo logTypeValue = 1 << iota
+	vWarning
+	vError
+)
+
+const defaultLogLevel = vInfo + vWarning + vError
+
+var logLevelValues = map[logTypeName]logTypeValue{
+	tInfo:    vInfo,
+	tWarning: vWarning,
+	tError:   vError,
+}
 
 type fileLogger struct {
 	*log.Logger
@@ -24,6 +46,7 @@ type fileLogger struct {
 }
 
 type gatewayLogger struct {
+	logLevel logTypeValue
 	*log.Logger
 	fileLoggers map[fileType]*fileLogger
 }
@@ -33,6 +56,7 @@ type logger interface {
 	Error(string)
 	Warning(string)
 	clean()
+	disable(logTypeValue)
 }
 
 const (
@@ -53,6 +77,7 @@ func newGatewayLogger() logger {
 	return &gatewayLogger{
 		Logger:      log.New(os.Stdout, logPrefix, defaultLogFlag),
 		fileLoggers: fileLoggers,
+		logLevel:    defaultLogLevel,
 	}
 }
 
@@ -75,18 +100,21 @@ func newFileLogger(t fileType, prefix string, flag int) *fileLogger {
 }
 
 func (l *gatewayLogger) Info(v string) {
-	l.write(fmt.Sprintf("[INFO] – %s\n", v), fInfo)
+	l.write(tInfo, fmt.Sprintf("[INFO] – %s\n", v), fInfo)
 }
 
 func (l *gatewayLogger) Error(v string) {
-	l.write(fmt.Sprintf("[ERROR] – %s\n", v), fError)
+	l.write(tError, fmt.Sprintf("[ERROR] – %s\n", v), fError)
 }
 
 func (l *gatewayLogger) Warning(v string) {
-	l.write(fmt.Sprintf("[WARNING] – %s\n", v), fInfo)
+	l.write(tWarning, fmt.Sprintf("[WARNING] – %s\n", v), fInfo)
 }
 
-func (l *gatewayLogger) write(t string, fType fileType) {
+func (l *gatewayLogger) write(logType logTypeName, t string, fType fileType) {
+	if logLevelValues[logType]&l.logLevel == 0 {
+		return
+	}
 	l.Printf(t)
 	fileLogger, exits := l.fileLoggers[fType]
 	if !exits {
@@ -166,4 +194,11 @@ func getFileName(ft fileType) string {
 
 func getCurrentDate() string {
 	return time.Now().Format("2006_01_02")
+}
+
+func (l *gatewayLogger) disable(d logTypeValue) {
+	if l.logLevel&d == 0 {
+		return
+	}
+	l.logLevel -= d
 }
