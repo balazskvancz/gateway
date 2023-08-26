@@ -4,6 +4,11 @@
   "middlewaresEnabled": 1,
   "healthCheckInterval": "1m",
   "secretKey": "",
+  "loggerConfig": {
+    "disabledLoggers": [
+      "error"
+    ]
+  },
   "services": [
     {
       "protocol": "http",

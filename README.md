@@ -2,6 +2,38 @@
 
 Lightweight API Gateway written in Go.
 
+## Config
+
+The main way of configuring the Gateway is done by the `config.json` file. You can always find the latest state of the config in `config.json.example` file, even if this document is not updated.
+
+A basic config looks something like this:
+```json
+{
+  "address": 3100,							// This is the HTTP address where the Gateway will listen at.
+  "productionLevel": 0,					// The state of the software. 0 stands for development and 1 for production.
+  "middlewaresEnabled": 1,			// Flag for enabling global and custom middlewares. In case of 0 they are disabled, case of 1 they are enabled.
+  "healthCheckInterval": "1m",	// The interval of the health check frequency, later discussed. 
+  "secretKey": "",							// SecretKey later discussed.
+	"loggerConfig": {
+    "disabledLoggers": [				// If you dont want to see loggers, you can disable it here.
+			// "info",
+			// "warning",
+      "error"
+		]
+  },
+  "services": [									// All the registered services, later discussed.
+    {
+      "protocol": "http",
+      "name": "testService",
+      "host": "localhost",
+      "port": "3001",
+      "prefix": "/api/test",
+      "timeOutSec": 5
+    }
+  ]
+}
+```
+
 ## Features
 
 ### Creating a new instance
@@ -104,3 +136,43 @@ gw.RegisterMiddleware(func(ctx *gateway.Context, next gateway.HandlerFunc) {
 ### Logging to file 
 
 As well as normal logging to stdout and stderr, it is enabled by deafult to write the same logs to persistent files, which date stamps.
+
+### Service registry
+
+The main feature of any API Gataway is the abilitiy to handle traffic to and between different services. In this gateway the routing is based upon prefixing.
+
+Every service's config must be follow this rule in the `config.json` file:
+
+```json
+{
+  "protocol": "http", 			// Can be "http" or "https".
+  "host": "localhost",			// Any hostname without without protocol.
+  "name": "exampleService", // The name of the service, must be unique.
+  "port": "3001",						// The port where the service is avaiable.
+  "prefix": "/api/test",		// The routing prefix.
+  "timeOutSec": 5						// How long should a request go on before timeouting.
+}
+```
+
+After the Gateway is up and running, it will make requests to the registered services – as a heartbeat – periodically. Each registered services must have a public REST endpoint: `GET /api/status/health-check`. It should only respond with HTTP 200. Any other status code or timeout will be acknowledged as the given service is down.
+
+There is another way to signal the Gateway that one service is up, is by making a POST request as the following. The url be: `/api/system/services/update`.
+
+The request body :
+```json
+{
+	"serviceName": "exampleService"
+}
+```
+
+To ensure that this the request is done by an authorized service, the following header must be present, or the request is not proccessed:
+
+```plain
+'X-GATEWAY-KEY': $HASHVALUE
+```
+
+where the `$HASHVALUE` is calculated by the following method. Lets take body of the request, stringify it, and compact it – remove all unnecessary whitespaces and newline characters. Then append the common secret key to the and. eq: `{"serviceName":"exampleService"}exampleSecretKey`. Then, you must make a hash with SHA256 algorithm and you are done.
+
+If a service is down you are trying to access it, the Gateway would return an HTTP 503 error, as expected.
+
+There is way to get some information about the inner state of the Gateway and service. You have to make a POST request to: `/api/system/services/info`. The body must be an empty object: `{}`, and the it should include the appended secret key and also the header aswell.

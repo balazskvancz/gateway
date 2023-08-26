@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"reflect"
 	"time"
 )
@@ -29,6 +30,12 @@ const (
 
 type decodeFunction func([]byte) (any, error)
 
+// getCleanedBody makes the incoming request body as tight as possible.
+func getCleanedBody(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte(" "), []byte(""))
+	return bytes.ReplaceAll(b, []byte("\n"), []byte(""))
+}
+
 // validateIncomingRequest validates all the incoming requests by its header key.
 func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
 	return func(ctx *Context, next HandlerFunc) {
@@ -38,12 +45,17 @@ func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
 			return
 		}
 
+		b = getCleanedBody(b)
+
 		var (
 			key   = ctx.GetRequestHeader(X_GW_HEADER_KEY)
 			plain = append(b, []byte(g.info.secretKey)...)
 		)
 
-		if h := createHash(plain); reflect.DeepEqual(h, []byte(key)) {
+		// If the value if the header is not deeply equal to
+		// the one that we constructed based on the shared secret key
+		// we simply return with 401.
+		if h := createHash(plain); !reflect.DeepEqual(h, []byte(key)) {
 			ctx.SendUnauthorized()
 			return
 		}
