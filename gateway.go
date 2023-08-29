@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -31,8 +32,10 @@ var (
 const (
 	defaultAddress = 8000
 
-	routeSystemInfo         = "/api/system/services/info"
-	routeUpdateServiceState = "/api/system/services/update"
+	routeSystemPrefix = "/api/system"
+
+	routeSystemInfo         = routeSystemPrefix + "/services/info"
+	routeUpdateServiceState = routeSystemPrefix + "/services/update"
 )
 
 const (
@@ -480,7 +483,7 @@ func (gw *Gateway) getMatchingHandlerFunc(ctx *Context) HandlerFunc {
 	// If we have some explicit match, then we have to
 	// execute its mwchain.
 	if route := gw.findNamedRoute(ctx); route != nil {
-		if gw.areMiddlewaresEnabled() {
+		if gw.areMiddlewaresEnabled() || strings.HasPrefix(ctx.GetFullUrl(), routeSystemPrefix) {
 			return route.getChain()
 		}
 		return route.getHandler()
@@ -520,7 +523,7 @@ func (g *Gateway) filterMatchingMiddlewares(ctx *Context) *matchingMiddleware {
 		post: make([]Middleware, 0),
 	}
 
-	areEnabled := g.areMiddlewaresEnabled()
+	areEnabled := g.areMiddlewaresEnabled() || strings.HasPrefix(ctx.GetFullUrl(), routeSystemPrefix)
 
 	reduce(g.middlewares, func(acc *matchingMiddleware, curr Middleware) *matchingMiddleware {
 		if !curr.DoesMatch(ctx) {
