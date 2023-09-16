@@ -9,12 +9,13 @@ var (
 	errPresentSlashSuffix = errors.New("[tree]: urls must not be ended with a '/'")
 	errTreeIsNil          = errors.New("[tree]: the tree is <nil>")
 
-	errBadProtocol = errors.New("[service]: only http or https protocol are supported")
-	errConfigIsNil = errors.New("[service]: config is <nil>")
-	errEmptyHost   = errors.New("[service]: hostname cant be empty")
-	errEmptyName   = errors.New("[service]: name cant be empty")
-	errEmptyPort   = errors.New("[service]: port cant be empty")
-	errEmptyPrefix = errors.New("[service]: prefix cant be empty")
+	errBadProtocol            = errors.New("[service]: only http or https protocol are supported")
+	errConfigIsNil            = errors.New("[service]: config is <nil>")
+	errEmptyHost              = errors.New("[service]: hostname cant be empty")
+	errEmptyName              = errors.New("[service]: name cant be empty")
+	errEmptyPort              = errors.New("[service]: port cant be empty")
+	errEmptyPrefix            = errors.New("[service]: prefix cant be empty")
+	errUnsupportedServiceType = errors.New("[service]: gRPC server name empty")
 
 	errServiceNotAvailable = errors.New("service is not available")
 

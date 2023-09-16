@@ -99,7 +99,7 @@ func (r *registry) updateStatus() {
 			service := n.GetValue().GetValue()
 
 			if err := service.checkStatus(); err != nil {
-				l := fmt.Sprintf("[registry] service %s – checkStatus error: %v\n", service.Name, err)
+				l := fmt.Sprintf("[registry] service %s – checkStatus error: %v", service.Name, err)
 				r.logger.Error(l)
 			}
 		}

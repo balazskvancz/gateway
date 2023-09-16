@@ -9,19 +9,17 @@ The main way of configuring the Gateway is done by the `config.json` file. You c
 A basic config looks something like this:
 ```json
 {
-  "address": 3100,							// This is the HTTP address where the Gateway will listen at.
-  "productionLevel": 0,					// The state of the software. 0 stands for development and 1 for production.
-  "middlewaresEnabled": 1,			// Flag for enabling global and custom middlewares. In case of 0 they are disabled, case of 1 they are enabled.
-  "healthCheckInterval": "1m",	// The interval of the health check frequency, later discussed. 
-  "secretKey": "",							// SecretKey later discussed.
+  "address": 3100,
+  "productionLevel": 0,
+  "middlewaresEnabled": 1,
+  "healthCheckInterval": "1m",
+  "secretKey": "",
 	"loggerConfig": {
-    "disabledLoggers": [				// If you dont want to see loggers, you can disable it here.
-			// "info",
-			// "warning",
+    "disabledLoggers": [
       "error"
 		]
   },
-  "services": [									// All the registered services, later discussed.
+  "services": [
     {
       "protocol": "http",
       "name": "testService",
@@ -145,12 +143,12 @@ Every service's config must be follow this rule in the `config.json` file:
 
 ```json
 {
-  "protocol": "http", 			// Can be "http" or "https".
-  "host": "localhost",			// Any hostname without without protocol.
-  "name": "exampleService", // The name of the service, must be unique.
-  "port": "3001",						// The port where the service is avaiable.
-  "prefix": "/api/test",		// The routing prefix.
-  "timeOutSec": 5						// How long should a request go on before timeouting.
+  "protocol": "http",
+  "host": "localhost",
+  "name": "exampleService",
+  "port": "3001",
+  "prefix": "/api/test",
+  "timeOutSec": 5
 }
 ```
 

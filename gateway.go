@@ -61,10 +61,13 @@ type GatewayInfo struct {
 	startTime time.Time
 
 	healthCheckFrequency time.Duration
+
+	grpcProxyAddress int
 }
 
 type Gateway struct {
 	info *GatewayInfo
+
 	// Base-context of the Gateway.
 	ctx context.Context
 
@@ -98,6 +101,8 @@ type Gateway struct {
 
 	// Custom handler function for panics.
 	panicHandler PanicHandlerFunc
+
+	grpcProxy *grpcProxy
 
 	logger logger
 }
@@ -179,6 +184,12 @@ func WithDisabledLoggers(disabled logTypeValue) GatewayOptionFunc {
 	}
 }
 
+func WithGrpcProxy(addr int) GatewayOptionFunc {
+	return func(g *Gateway) {
+		g.info.grpcProxyAddress = addr
+	}
+}
+
 // NewFromConfig creates and returns a new Gateway based on
 // the given config file path. In case of any errors
 // – due to IO reading or marshal error – it returns the error also.
@@ -237,6 +248,11 @@ func New(opts ...GatewayOptionFunc) *Gateway {
 	gw.serviceRegisty.withHealthCheck(gw.info.healthCheckFrequency)
 	gw.serviceRegisty.withLogger(gw.logger)
 
+	// If there was a gRPC address given via config, then attach the proxy.
+	if gw.info.grpcProxyAddress != 0 {
+		gw.grpcProxy = newGrpcProxy(gw.info.grpcProxyAddress, gw.logger, gw.getGRPCServiceByPrefix)
+	}
+
 	gw.RegisterMiddleware(
 		loggerMiddleware(gw), DefaultMiddlewareMatcher, MiddlewarePostRunner,
 	)
@@ -285,6 +301,14 @@ func (gw *Gateway) Start() {
 		}
 
 	}()
+
+	// If there is a gRPC proxy attached to the Gateway
+	// then it should start listening.
+	if gw.grpcProxy != nil {
+		go gw.grpcProxy.listen()
+
+		defer gw.grpcProxy.stop()
+	}
 
 	// Updating the status of each service.
 	go gw.serviceRegisty.updateStatus()
@@ -570,4 +594,18 @@ func loggerMiddleware(g *Gateway) MiddlewareFunc {
 // service, it returns error.
 func (g *Gateway) RegisterService(conf *ServiceConfig) error {
 	return g.serviceRegisty.addService(conf)
+}
+
+func (g *Gateway) getGRPCServiceByPrefix(p string) *service {
+	if p == "" {
+		return nil
+	}
+	serv := g.serviceRegisty.findService(p)
+	if serv == nil {
+		return nil
+	}
+	if serv.ServiceType != serviceGRPCType {
+		return nil
+	}
+	return serv
 }

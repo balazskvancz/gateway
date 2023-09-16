@@ -9,8 +9,12 @@
       "error"
     ]
   },
+  "grpcProxy": {
+    "address": 3000
+  },
   "services": [
     {
+      "serviceType": 0,
       "protocol": "http",
       "name": "testService",
       "host": "localhost",

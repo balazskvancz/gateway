@@ -16,14 +16,19 @@ type LoggerConfig struct {
 	DisabledLoggers []logTypeName `json:"disabledLoggers"`
 }
 
+type GrpcProxyConfig struct {
+	Address int `json:"address"`
+}
+
 type GatewayConfig struct {
-	Address             int           `json:"address"`
-	MiddlewaresEnabled  *runLevel     `json:"middlewaresEnabled"`
-	ProductionLevel     *runLevel     `json:"productionLevel"`
-	SecretKey           string        `json:"secretKey"`
-	HealthCheckInterval string        `json:"healthCheckInterval"`
-	TimeOutSec          int           `json:"timeOutSec"`
-	LoggerConfig        *LoggerConfig `json:"loggerConfig"`
+	Address             int              `json:"address"`
+	MiddlewaresEnabled  *runLevel        `json:"middlewaresEnabled"`
+	ProductionLevel     *runLevel        `json:"productionLevel"`
+	SecretKey           string           `json:"secretKey"`
+	HealthCheckInterval string           `json:"healthCheckInterval"`
+	TimeOutSec          int              `json:"timeOutSec"`
+	LoggerConfig        *LoggerConfig    `json:"loggerConfig"`
+	GrpcProxy           *GrpcProxyConfig `json:"grpcProxy"`
 
 	Services []*ServiceConfig `json:"services"`
 }
@@ -103,6 +108,10 @@ func getGatewayOptionFuncs(conf *GatewayConfig) []GatewayOptionFunc {
 
 	if conf.ProductionLevel != nil {
 		funcs = append(funcs, WithProductionLevel(*conf.ProductionLevel))
+	}
+
+	if conf.GrpcProxy != nil {
+		funcs = append(funcs, WithGrpcProxy(conf.GrpcProxy.Address))
 	}
 
 	if configInterval := getHealthCheckInterval(conf.HealthCheckInterval); configInterval != 0 {
