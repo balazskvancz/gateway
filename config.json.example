@@ -21,6 +21,15 @@
       "port": "3001",
       "prefix": "/api/test",
       "timeOutSec": 5
+    },
+    {
+      "serviceType": 1,
+      "protocol": "http",
+      "name": "exampleGRPCService",
+      "host": "localhost",
+      "port": "3002",
+      "prefix": "/example",
+      "timeOutSec": 5
     }
   ]
 }

@@ -174,3 +174,54 @@ where the `$HASHVALUE` is calculated by the following method. Lets take body of 
 If a service is down you are trying to access it, the Gateway would return an HTTP 503 error, as expected.
 
 There is way to get some information about the inner state of the Gateway and service. You have to make a POST request to: `/api/system/services/info`. The body must be an empty object: `{}`, and the it should include the appended secret key and also the header aswell.
+
+
+### gRPC proxy
+
+With version `v0.4.0` a gRPC proxy is introduced int the Gateway. In order to start it, simply have to add this into the main configuration file of the Gateway:
+
+```json
+"grpcProxy": {
+  "address": 3000
+}
+```
+
+This addition to the config, will start a gRPC sever listening at the given port. This will proxy all the gRPC calls between the services in the cluster. 
+
+For now, this gRPC proxy only supports interservice communication, so from the outside only REST calls are supported.
+
+To mark a service as gRPC compatible service, only have to modify the config of the given service as below:
+
+```json
+"services": [
+  {
+    "serviceType": 1,
+    "protocol": "http",
+    "name": "exampleService",
+    "host": "localhost",
+    "port": "3001",
+    "prefix": "/example.ExampleService"
+  }
+]
+```
+
+Where the `serviceType` must take the value `1`, and the prefix should be a unique part of the gRPC service `FullMethodName`. 
+
+To identify this, you have to look inside the generated `*._grpc.pb.go` file. There you would find something like this:
+
+```go
+const (
+	ExampleService_GetMessage_FullMethodName = "/example.ExampleService/GetMessage"
+)
+```
+
+Probably, there is more than one `FullMethodName` in your file, but the package description will be the same.
+
+```go
+const (
+	ExampleService_GetMessage_FullMethodName 	= "/example.ExampleService/GetMessage"
+	OtherService_GetMessage_FullMethodName 		= "/example.OtherService/GetMessage"
+)
+```
+
+In the case of the latter example, the prefix should be `/example`. Every gRCP proxy call will make a lookup inside the `Service registry`, and find the best fit, due to the longest match in the given prefix.
