@@ -77,6 +77,9 @@ type Service interface {
 	Post(string, []byte, ...http.Header) (*http.Response, error)
 	Put(string, []byte, ...http.Header) (*http.Response, error)
 	Delete(string, ...http.Header) (*http.Response, error)
+	GetConfig() *ServiceConfig
+	GetAddressWithProtocol() string
+	GetAddress() string
 }
 
 type service struct {
@@ -87,6 +90,131 @@ type service struct {
 }
 
 var _ Service = (*service)(nil)
+
+// Handle handles the execution based on the given Context.
+func (s *service) Handle(ctx *Context) {
+	if s.ServiceType != serviceRESTType {
+		return
+	}
+
+	if s.state != StateAvailable {
+		ctx.SendUnavailable()
+
+		return
+	}
+
+	cl := s.clientPool.Get().(httpClient)
+	defer s.clientPool.Put(cl)
+
+	res, err := cl.pipe(ctx.GetRequest())
+	if err != nil {
+		s.setState(StateRefused)
+		// TODO: Change it to logger.
+		// fmt.Println(err)
+		ctx.SendInternalServerError()
+		return
+	}
+
+	ctx.Pipe(res)
+}
+
+// Get sends a HTTP GET request to the given service.
+func (s *service) Get(url string, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodGet, url, nil, header...)
+}
+
+// Post sends a HTTP POST request to the given service.
+func (s *service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodPost, url, bytes.NewReader(data), header...)
+}
+
+// PostReader sends a HTTP POST request to the given service, where the body is io.Reader.
+func (s *service) PostReader(url string, data io.Reader, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodPost, url, data, header...)
+}
+
+// Put sends a HTTP PUT request to the given service.
+func (s *service) Put(url string, data []byte, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodPut, url, bytes.NewReader(data), header...)
+}
+
+// PutReader sends a HTTP PUT request to the given service, where the body is io.Reader..
+func (s *service) PutReader(url string, data io.Reader, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodPut, url, data, header...)
+}
+
+// Delete sends a HTTP DELETE request to the given service.
+func (s *service) Delete(url string, header ...http.Header) (*http.Response, error) {
+	return s.doRequest(http.MethodDelete, url, nil, header...)
+}
+
+// GetAddressWithProtocol returns the address of the service with the protocol in it.
+func (s *service) GetAddressWithProtocol() string {
+	return fmt.Sprintf("%s://%s:%s", s.Protocol, s.Host, s.Port)
+}
+
+// GetAddress simply returns the address of the service in the form HOST:PORT.
+func (s *service) GetAddress() string {
+	return fmt.Sprintf("%s:%s", s.Host, s.Port)
+}
+
+// GetConfig returns the actual config of the given service.
+func (s *service) GetConfig() *ServiceConfig {
+	return s.ServiceConfig
+}
+
+func (s *service) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
+	if s.ServiceType != serviceGRPCType {
+		return nil, fmt.Errorf("[%s]: is not a REST type service, cant perform HTTP %s", s.Name, method)
+	}
+	if s.state != StateAvailable {
+		return nil, errServiceNotAvailable
+	}
+
+	cl := s.clientPool.Get().(httpClient)
+	defer s.clientPool.Put(cl)
+
+	return cl.doRequest(method, url, body, header...)
+}
+
+func (s *service) checkStatus() error {
+	// Little hack for now. We perform the healthcheck only for REST services.
+	if s.ServiceType != serviceRESTType {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeOutDur)
+	defer cancel()
+
+	cl := s.clientPool.Get().(httpClient)
+	defer s.clientPool.Put(cl)
+
+	url := s.GetAddressWithProtocol() + s.StatusPath
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		s.setState(StateUnknown)
+		return err
+	}
+
+	res, err := cl.Do(req)
+	if err != nil {
+		s.setState(StateRefused)
+		return err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		s.setState(StateRefused)
+		return nil
+	}
+
+	s.setState(StateAvailable)
+	return nil
+}
+
+func (s *service) setState(state serviceState) {
+	s.state = state
+}
 
 func newService(conf *ServiceConfig) *service {
 	statusPath := func() string {
@@ -151,118 +279,4 @@ func validateService(config *ServiceConfig) error {
 		return errBadProtocol
 	}
 	return nil
-}
-
-// A handler for each service. For this version it only supports REST based
-// handling.
-func (s *service) Handle(ctx *Context) {
-	if s.ServiceType != serviceRESTType {
-		return
-	}
-
-	if s.state != StateAvailable {
-		ctx.SendUnavailable()
-
-		return
-	}
-
-	cl := s.clientPool.Get().(httpClient)
-	defer s.clientPool.Put(cl)
-
-	res, err := cl.pipe(ctx.GetRequest())
-	if err != nil {
-		s.setState(StateRefused)
-		// [TODO]: Change it to logger.
-		// fmt.Println(err)
-		ctx.SendInternalServerError()
-		return
-	}
-
-	ctx.Pipe(res)
-}
-
-// Sending @GET request to the service.
-func (s *service) Get(url string, header ...http.Header) (*http.Response, error) {
-	return s.doRequest(http.MethodGet, url, nil, header...)
-}
-
-// Sending @POST request to the service.
-func (s *service) Post(url string, data []byte, header ...http.Header) (*http.Response, error) {
-	return s.doRequest(http.MethodPost, url, bytes.NewReader(data), header...)
-}
-
-// Sending @PUT request to the service.
-func (s *service) Put(url string, data []byte, header ...http.Header) (*http.Response, error) {
-	return s.doRequest(http.MethodPut, url, bytes.NewReader(data), header...)
-}
-
-// Sending @Delete request to the service.
-func (s *service) Delete(url string, header ...http.Header) (*http.Response, error) {
-	return s.doRequest(http.MethodDelete, url, nil, header...)
-}
-
-func (s *service) PostReader(url string, data io.Reader, header ...http.Header) (*http.Response, error) {
-	return s.doRequest(http.MethodPost, url, data, header...)
-}
-
-func (s *service) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
-	if s.ServiceType != serviceGRPCType {
-		return nil, fmt.Errorf("[%s]: is not a REST type service, cant perform HTTP %s", s.Name, method)
-	}
-	if s.state != StateAvailable {
-		return nil, errServiceNotAvailable
-	}
-
-	cl := s.clientPool.Get().(httpClient)
-	defer s.clientPool.Put(cl)
-
-	return cl.doRequest(method, url, body, header...)
-}
-
-// checkStatus checks the status of the service.
-func (s *service) checkStatus() error {
-	// Little hack for now. We perform the healthcheck only for REST services.
-	if s.ServiceType != serviceRESTType {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeOutDur)
-	defer cancel()
-
-	cl := s.clientPool.Get().(httpClient)
-	defer s.clientPool.Put(cl)
-
-	url := s.GetAddressWithProtocol() + s.StatusPath
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		s.setState(StateUnknown)
-		return err
-	}
-
-	res, err := cl.Do(req)
-	if err != nil {
-		s.setState(StateRefused)
-		return err
-	}
-
-	if res.StatusCode != http.StatusOK {
-		s.setState(StateRefused)
-		return nil
-	}
-
-	s.setState(StateAvailable)
-	return nil
-}
-
-func (s *service) setState(state serviceState) {
-	s.state = state
-}
-
-func (s *service) GetAddressWithProtocol() string {
-	return fmt.Sprintf("%s://%s:%s", s.Protocol, s.Host, s.Port)
-}
-
-func (s *service) GetAddress() string {
-	return fmt.Sprintf("%s:%s", s.Host, s.Port)
 }

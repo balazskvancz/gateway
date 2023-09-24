@@ -25,7 +25,7 @@ var (
 	}
 )
 
-type serviceLookupFn func(string) *service
+type serviceLookupFn func(string) Service
 
 type grpcProxy struct {
 	logger

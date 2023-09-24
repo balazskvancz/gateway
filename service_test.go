@@ -117,7 +117,6 @@ func (mc *mockHttpClient) doRequest(_ string, _ string, _ io.Reader, _ ...http.H
 var _ (httpClient) = (*mockHttpClient)(nil)
 
 func TestHandle(t *testing.T) {
-
 	type testCase struct {
 		name       string
 		getService serviceFactory
@@ -127,11 +126,15 @@ func TestHandle(t *testing.T) {
 		expState  serviceState
 	}
 
+	restServiceConfig := &ServiceConfig{
+		ServiceType: 0,
+	}
+
 	tt := []testCase{
 		{
 			name: "the function send HTTP 503 if the service is not available",
 			getService: func(t *testing.T) *service {
-				return newService(nil)
+				return newService(restServiceConfig)
 			},
 			expStatus: http.StatusServiceUnavailable,
 			expBody:   nil,
@@ -140,7 +143,7 @@ func TestHandle(t *testing.T) {
 		{
 			name: "the function send HTTP 500 if the pipe is not successful",
 			getService: func(t *testing.T) *service {
-				s := newService(nil)
+				s := newService(restServiceConfig)
 
 				s.setState(StateAvailable)
 
@@ -163,7 +166,7 @@ func TestHandle(t *testing.T) {
 		{
 			name: "the function writes the body and statusCode of response from service",
 			getService: func(t *testing.T) *service {
-				s := newService(nil)
+				s := newService(restServiceConfig)
 
 				s.setState(StateAvailable)
 

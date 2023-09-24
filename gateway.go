@@ -335,7 +335,7 @@ func (gw *Gateway) Start() {
 
 // GetService searches for a service by its name.
 // Returns error if, there is no service by the given name.
-func (gw *Gateway) GetService(name string) (*service, error) {
+func (gw *Gateway) GetService(name string) (Service, error) {
 	service := gw.serviceRegisty.getServiceByName(name)
 	if service == nil {
 		return nil, ErrServiceNotExists
@@ -596,7 +596,7 @@ func (g *Gateway) RegisterService(conf *ServiceConfig) error {
 	return g.serviceRegisty.addService(conf)
 }
 
-func (g *Gateway) getGRPCServiceByPrefix(p string) *service {
+func (g *Gateway) getGRPCServiceByPrefix(p string) Service {
 	if p == "" {
 		return nil
 	}
