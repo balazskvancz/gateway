@@ -13,7 +13,7 @@ const (
 
 type registry struct {
 	healthCheckFrequency time.Duration
-	serviceTree          *tree[*service]
+	serviceTree          *tree
 	logger
 }
 
@@ -21,7 +21,7 @@ type registry struct {
 func newRegistry() *registry {
 	r := &registry{
 		healthCheckFrequency: defaultHealthCheckFreq,
-		serviceTree:          newTree[*service](),
+		serviceTree:          newTree(),
 	}
 
 	return r

@@ -3,7 +3,8 @@ module github.com/balazskvancz/gateway
 go 1.19
 
 require (
-	github.com/balazskvancz/rtree v1.0.1
+	github.com/balazskvancz/gorouter v1.2.1
+	github.com/balazskvancz/rtree v1.0.2
 	google.golang.org/grpc v1.57.0
 	google.golang.org/protobuf v1.30.0
 )

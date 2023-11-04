@@ -1,8 +1,6 @@
 package gateway
 
 import (
-	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -202,115 +200,6 @@ func TestIncludes(t *testing.T) {
 
 			if got != tc.expectedIncludes {
 				t.Errorf("expected: %v; got: %v\n", tc.expectedIncludes, got)
-			}
-		})
-	}
-}
-
-func TestGetUrlParts(t *testing.T) {
-	type testCase struct {
-		name     string
-		url      string
-		expected []string
-	}
-
-	tt := []testCase{
-		{
-			name:     "the function returns the parts, when normal url called",
-			url:      "/foo/bar/baz",
-			expected: []string{"foo", "bar", "baz"},
-		},
-		{
-			name:     "the function returns the parts, when / prefix missing",
-			url:      "foo/bar/baz",
-			expected: []string{"foo", "bar", "baz"},
-		},
-		{
-			name:     "the function returns the parts, when there are query params",
-			url:      "foo/bar/baz?foo=yes",
-			expected: []string{"foo", "bar", "baz"},
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			parts := getUrlParts(tc.url)
-
-			if len(parts) != len(tc.expected) {
-				t.Fatalf("expected length: %d, got length: %d", len(tc.expected), len(parts))
-			}
-
-			if !reflect.DeepEqual(tc.expected, parts) {
-				t.Errorf("got slice is not as expected")
-			}
-		})
-	}
-}
-
-type getContextFn func(t *testing.T) context.Context
-
-func TestGetValueFromContext(t *testing.T) {
-	var defaultKey contextKey = "value-key"
-
-	type testCase struct {
-		name        string
-		getCtx      getContextFn
-		expected    string
-		expectedErr error
-	}
-
-	tt := []testCase{
-		{
-			name: "the function returns error if the given ctx is nil",
-			getCtx: func(t *testing.T) context.Context {
-				return nil
-			},
-			expected:    "",
-			expectedErr: errContextIsNil,
-		},
-		{
-			name: "the function returns error if cant parse it the value",
-			getCtx: func(t *testing.T) context.Context {
-				ctx := context.WithValue(context.Background(), defaultKey, 5)
-				return ctx
-			},
-			expected:    "",
-			expectedErr: errKeyInContextIsNotPresent,
-		},
-		{
-			name: "the function returns default value for the type if the key is not present",
-			getCtx: func(t *testing.T) context.Context {
-				type testCtxKey string
-
-				var key testCtxKey = "foo"
-
-				return context.WithValue(context.Background(), key, "bar")
-			},
-			expected:    "",
-			expectedErr: errKeyInContextIsNotPresent,
-		},
-		{
-			name: "the function returns the stored value associated with the key",
-			getCtx: func(t *testing.T) context.Context {
-				return context.WithValue(context.Background(), defaultKey, "bar")
-			},
-			expected:    "bar",
-			expectedErr: nil,
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := tc.getCtx(t)
-
-			val, err := getValueFromContext[string](ctx, defaultKey)
-
-			if val != tc.expected {
-				t.Errorf("expected value: %s; got value: %s\n", tc.expected, val)
-			}
-
-			if !errors.Is(err, tc.expectedErr) {
-				t.Errorf("expected error: %v; got error: %v\n", tc.expectedErr, err)
 			}
 		})
 	}

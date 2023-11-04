@@ -24,7 +24,7 @@ type updateServiceStateRequest struct {
 }
 
 const (
-	IncomingDecodedKey contextKey = "incomingDecoded"
+	IncomingDecodedKey ContextKey = "incomingDecoded"
 	X_GW_HEADER_KEY    string     = "X-GATEWAY-KEY"
 )
 
@@ -38,15 +38,8 @@ func getCleanedBody(b []byte) []byte {
 
 // validateIncomingRequest validates all the incoming requests by its header key.
 func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
-	return func(ctx *Context, next HandlerFunc) {
-		b, err := ctx.GetRawBody()
-		if err != nil {
-			ctx.SendUnauthorized()
-			return
-		}
-
-		b = getCleanedBody(b)
-
+	return func(ctx Context, next HandlerFunc) {
+		b := getCleanedBody(ctx.GetBody())
 		var (
 			key   = ctx.GetRequestHeader(X_GW_HEADER_KEY)
 			plain = append(b, []byte(g.info.secretKey)...)
@@ -73,9 +66,9 @@ func validateIncomingRequest(g *Gateway, df decodeFunction) MiddlewareFunc {
 
 // serviceStateUpdateHandler returns a HandlerFunc which will update the corresponding service's state.
 func serviceStateUpdateHandler(g *Gateway) HandlerFunc {
-	return func(ctx *Context) {
-		inc, err := getValueFromContext[*updateServiceStateRequest](ctx.ctx, IncomingDecodedKey)
-		if err != nil {
+	return func(ctx Context) {
+		inc, ok := ctx.GetBindedValue(IncomingDecodedKey).(*updateServiceStateRequest)
+		if !ok {
 			ctx.SendUnauthorized()
 			return
 		}
@@ -94,7 +87,7 @@ func serviceStateUpdateHandler(g *Gateway) HandlerFunc {
 // Currently it only returns the slice of registered services – with all its info –
 // the system's uptime and the count of served connections so far.
 func getSystemInfoHandler(g *Gateway) HandlerFunc {
-	return func(ctx *Context) {
+	return func(ctx Context) {
 		services := g.serviceRegisty.getAllServices()
 
 		info := make([]*ServiceInfo, len(services))
@@ -107,7 +100,7 @@ func getSystemInfoHandler(g *Gateway) HandlerFunc {
 		}
 
 		res := &infoResponse{
-			TotalConnectionService: ctx.contextId,
+			TotalConnectionService: ctx.GetContextId(),
 			Services:               info,
 			IsProd:                 g.isProd(),
 			AreMiddlewaresEnabled:  g.areMiddlewaresEnabled(),

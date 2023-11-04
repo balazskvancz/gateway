@@ -72,7 +72,7 @@ type ServiceConfig struct {
 }
 
 type Service interface {
-	Handle(*Context)
+	Handle(Context)
 	Get(string, ...http.Header) (*http.Response, error)
 	Post(string, []byte, ...http.Header) (*http.Response, error)
 	Put(string, []byte, ...http.Header) (*http.Response, error)
@@ -92,13 +92,15 @@ type service struct {
 var _ Service = (*service)(nil)
 
 // Handle handles the execution based on the given Context.
-func (s *service) Handle(ctx *Context) {
+func (s *service) Handle(ctx Context) {
 	if s.ServiceType != serviceRESTType {
+		ctx.SetStatusCode(http.StatusBadRequest)
+
 		return
 	}
 
 	if s.state != StateAvailable {
-		ctx.SendUnavailable()
+		ctx.SetStatusCode(http.StatusServiceUnavailable)
 
 		return
 	}
@@ -108,10 +110,12 @@ func (s *service) Handle(ctx *Context) {
 
 	res, err := cl.pipe(ctx.GetRequest())
 	if err != nil {
-		s.setState(StateRefused)
-		// TODO: Change it to logger.
-		// fmt.Println(err)
+		s.setState(StateUnknown)
+
+		ctx.Error("[Handle]: %v", err)
+
 		ctx.SendInternalServerError()
+
 		return
 	}
 
@@ -217,6 +221,10 @@ func (s *service) setState(state serviceState) {
 }
 
 func newService(conf *ServiceConfig) *service {
+	if conf == nil {
+		return nil
+	}
+
 	statusPath := func() string {
 		if conf != nil && conf.StatusPath != "" {
 			return conf.StatusPath

@@ -23,10 +23,4 @@ var (
 	errServiceExists    = errors.New("[registry]: service already registered")
 	errServiceTreeNil   = errors.New("[registry]: service tree is <nil>")
 	ErrServiceNotExists = errors.New("[registry]: service not exists")
-
-	errNotJsonContentType = errors.New("[context]: incoming body is not application/json")
-	errDataMustBePtr      = errors.New("[context]: data must be a pointer")
-
-	errContextIsNil             = errors.New("given context is nil")
-	errKeyInContextIsNotPresent = errors.New("the key is not stored in the given context")
 )

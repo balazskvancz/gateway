@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-type getTreeFn func(t *testing.T) *tree[*Route]
+type getTreeFn func(t *testing.T) *tree
 
-func getTestRoute() *Route {
-	return newRoute("", func(ctx *Context) {})
+func getTestservice() *service {
+	return newService(nil)
 }
 
 func TestTreeInsert(t *testing.T) {
@@ -22,52 +22,52 @@ func TestTreeInsert(t *testing.T) {
 	tt := []testCase{
 		{
 			name:    "error if the tree is <nil>",
-			getTree: func(t *testing.T) *tree[*Route] { return nil },
+			getTree: func(t *testing.T) *tree { return nil },
 			input:   "",
 			err:     errTreeIsNil,
 		},
 		{
 			name: "error if given url (key) is empty",
-			getTree: func(t *testing.T) *tree[*Route] {
-				return newTree[*Route]()
+			getTree: func(t *testing.T) *tree {
+				return newTree()
 			},
 			input: "",
 			err:   errKeyIsEmpty,
 		},
 		{
 			name: "error if given url (key) is not starting with a slash",
-			getTree: func(t *testing.T) *tree[*Route] {
-				return newTree[*Route]()
+			getTree: func(t *testing.T) *tree {
+				return newTree()
 			},
 			input: "foo",
 			err:   errMissingSlashPrefix,
 		},
 		{
 			name: "error if given url (key) is ending with a slash",
-			getTree: func(t *testing.T) *tree[*Route] {
-				return newTree[*Route]()
+			getTree: func(t *testing.T) *tree {
+				return newTree()
 			},
 			input: "/foo/",
 			err:   errPresentSlashSuffix,
 		},
 		{
 			name: "no error if insertion was successfull (empty tree)",
-			getTree: func(t *testing.T) *tree[*Route] {
-				return newTree[*Route]()
+			getTree: func(t *testing.T) *tree {
+				return newTree()
 			},
 			input: "/foo",
 			err:   nil,
 		},
 		{
 			name: "no error if insertion was successful (not empty tree)",
-			getTree: func(t *testing.T) *tree[*Route] {
-				tree := newTree[*Route]()
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
 
-				if err := tree.insert("/foo/bar", getTestRoute()); err != nil {
+				if err := tree.insert("/foo/bar", getTestservice()); err != nil {
 					t.Fatalf("unexpected error: %v\n", err)
 				}
 
-				if err := tree.insert("/foo/baz", getTestRoute()); err != nil {
+				if err := tree.insert("/foo/baz", getTestservice()); err != nil {
 					t.Fatalf("unexpected error: %v\n", err)
 				}
 
@@ -78,10 +78,10 @@ func TestTreeInsert(t *testing.T) {
 		},
 		{
 			name: "no error if insertion successful similar keys (not empty tree)",
-			getTree: func(t *testing.T) *tree[*Route] {
-				tree := newTree[*Route]()
+			getTree: func(t *testing.T) *tree {
+				tree := newTree()
 
-				if err := tree.insert("/foo", getTestRoute()); err != nil {
+				if err := tree.insert("/foo", getTestservice()); err != nil {
 					t.Fatalf("unexpected error: %v\n", err)
 				}
 
@@ -96,7 +96,7 @@ func TestTreeInsert(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tree := tc.getTree(t)
 
-			err := tree.insert(tc.input, getTestRoute())
+			err := tree.insert(tc.input, getTestservice())
 
 			if tc.err != nil && !errors.Is(err, tc.err) {
 				t.Errorf("expected error: %v; got: %v\n", tc.err, err)

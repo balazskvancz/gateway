@@ -5,26 +5,22 @@ import (
 )
 
 const (
-	slash = '/'
+	slash byte = '/'
 )
 
-type storeValue interface {
-	*Route | *service
+type tree struct {
+	*rtree.Tree[*service]
 }
 
-type tree[T storeValue] struct {
-	*rtree.Tree[T]
-}
-
-func newTree[T storeValue]() *tree[T] {
-	return &tree[T]{
-		Tree: rtree.New[T](),
+func newTree() *tree {
+	return &tree{
+		Tree: rtree.New[*service](),
 	}
 }
 
 // insert tries to store a key-value pair in the tree.
 // In case of unsuccessful insertion, we return the root of the error.
-func (t *tree[T]) insert(key string, value T) error {
+func (t *tree) insert(key string, value *service) error {
 	if t == nil {
 		return errTreeIsNil
 	}
