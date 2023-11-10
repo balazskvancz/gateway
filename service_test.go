@@ -95,13 +95,13 @@ func TestValidateService(t *testing.T) {
 
 type serviceFactory func(*testing.T) *service
 type mockHttpClient struct {
-	mockPipe func(*http.Request) (*http.Response, error)
+	mockPipe func(method string, url string, header http.Header, body io.Reader) (*http.Response, error)
 	mockDo   func(*http.Request) (*http.Response, error)
 	// httpClient
 }
 
-func (mc *mockHttpClient) pipe(req *http.Request) (*http.Response, error) {
-	return mc.mockPipe(req)
+func (mc *mockHttpClient) pipe(method string, url string, header http.Header, body io.Reader) (*http.Response, error) {
+	return mc.mockPipe(method, url, header, body)
 }
 
 func (mc *mockHttpClient) Do(req *http.Request) (*http.Response, error) {

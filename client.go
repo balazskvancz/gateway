@@ -22,7 +22,7 @@ type client struct {
 
 type httpClient interface {
 	doRequest(string, string, io.Reader, ...http.Header) (*http.Response, error)
-	pipe(*http.Request) (*http.Response, error)
+	pipe(method string, url string, header http.Header, body io.Reader) (*http.Response, error)
 	Do(*http.Request) (*http.Response, error)
 }
 
@@ -78,14 +78,11 @@ func (cl *client) doRequest(method string, url string, body io.Reader, header ..
 	})
 }
 
-func (cl *client) pipe(req *http.Request) (*http.Response, error) {
-	body := req.Body
-	defer body.Close()
-
+func (cl *client) pipe(method string, url string, header http.Header, body io.Reader) (*http.Response, error) {
 	return cl.do(reqConfig{
-		method: req.Method,
-		url:    cl.hostName + req.RequestURI,
-		header: req.Header,
+		method: method,
+		url:    cl.hostName + url,
+		header: header,
 		body:   body,
 	})
 }

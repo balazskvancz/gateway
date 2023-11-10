@@ -108,7 +108,9 @@ func (s *service) Handle(ctx Context) {
 	cl := s.clientPool.Get().(httpClient)
 	defer s.clientPool.Put(cl)
 
-	res, err := cl.pipe(ctx.GetRequest())
+	body := bytes.NewReader(ctx.GetBody())
+
+	res, err := cl.pipe(ctx.GetRequestMethod(), ctx.GetUrl(), ctx.GetRequestHeaders(), body)
 	if err != nil {
 		s.setState(StateUnknown)
 
