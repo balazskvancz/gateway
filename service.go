@@ -170,7 +170,7 @@ func (s *service) GetConfig() *ServiceConfig {
 }
 
 func (s *service) doRequest(method string, url string, body io.Reader, header ...http.Header) (*http.Response, error) {
-	if s.ServiceType != serviceGRPCType {
+	if s.ServiceType != serviceRESTType {
 		return nil, fmt.Errorf("[%s]: is not a REST type service, cant perform HTTP %s", s.Name, method)
 	}
 	if s.state != StateAvailable {
