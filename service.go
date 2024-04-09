@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/balazskvancz/gorouter"
 )
 
 type serviceState uint8
@@ -108,7 +111,16 @@ func (s *service) Handle(ctx Context) {
 	cl := s.clientPool.Get().(httpClient)
 	defer s.clientPool.Put(cl)
 
-	body := bytes.NewReader(ctx.GetBody())
+	// If the body of the incoming request is a formData
+	// then the original body reader must be used instead of
+	// the already read body, which is []byte.
+	var body io.Reader = func() io.Reader {
+		if strings.Contains(ctx.GetContentType(), gorouter.MultiPartFormContentType) {
+			return ctx.GetRequest().Body
+		}
+
+		return bytes.NewReader(ctx.GetBody())
+	}()
 
 	res, err := cl.pipe(ctx.GetRequestMethod(), ctx.GetUrl(), ctx.GetRequestHeaders(), body)
 	if err != nil {

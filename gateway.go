@@ -417,8 +417,6 @@ func (gw *Gateway) registerSystemRoutes() {
 		gorouter.MiddlewareWithAlwaysAllowed(true),
 	)
 
-	var _ = mw
-
 	gw.RegisterMiddleware(mw)
 
 	gw.Post(routeSystemInfo, getSystemInfoHandler(gw))
