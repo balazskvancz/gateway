@@ -44,6 +44,9 @@ func withTimeOut(tOut time.Duration) httpClientOptionFunc {
 func newHttpClient(opts ...httpClientOptionFunc) httpClient {
 	hc := &client{
 		Client: &http.Client{
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 			Timeout: defaultClientTimeout,
 		},
 	}
